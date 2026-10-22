@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "BHL One",
+    "slug": "bhl-one",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/bhl-one-icon.png",
+    "scheme": "bhl-one",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "icon": "./assets/images/bhl-one-icon.png",
+      "bundleIdentifier": "vn.io.bhl.one",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "vn.io.bhl.one",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F4C81",
+        "foregroundImage": "./assets/images/bhl-one-icon.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/bhl-one-icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F7FB",
+          "image": "./assets/images/bhl-one-icon.png",
+          "imageWidth": 132
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#2563EB",
+          "defaultChannel": "messages"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "168d71cc-7dd8-44eb-9829-d069215f674d"
+      }
+    }
+  }
+}
