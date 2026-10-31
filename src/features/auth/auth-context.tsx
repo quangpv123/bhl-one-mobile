@@ -11,6 +11,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   can: (permission: string) => boolean;
 }
 
@@ -59,6 +60,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(response.data.data.user);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const response = await api.get<ApiResponse<User>>('/auth/me');
+    setUser(response.data.data);
+  }, []);
+
   const logout = useCallback(async () => {
     await api.post('/auth/logout').catch(() => undefined);
     await clearSession();
@@ -71,9 +77,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       loading,
       login,
       logout,
+      refreshUser,
       can: permission => Boolean(user?.permissions?.includes(permission)),
     }),
-    [loading, login, logout, token, user],
+    [loading, login, logout, refreshUser, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

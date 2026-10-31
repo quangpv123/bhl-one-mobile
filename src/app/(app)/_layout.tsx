@@ -1,40 +1,24 @@
-import { Tabs } from 'expo-router';
-import { StyleSheet, Text } from 'react-native';
+import { Stack } from 'expo-router';
 
 import { useNotificationNavigation } from '@/services/notifications';
 import { colors } from '@/theme/colors';
 
-const icons: Record<string, string> = {
-  index: '⌂',
-  messages: '✉',
-  transport: '▣',
-  profile: '●',
-};
-
-export default function AppTabsLayout() {
+/**
+ * The responsive ERP uses one application shell and a drawer instead of a
+ * native bottom tab bar. Screens keep their own URLs, while Screen/AppHeader
+ * supplies the shared mobile web-like shell.
+ */
+export default function AppLayout() {
   useNotificationNavigation();
 
   return (
-    <Tabs
-      screenOptions={({ route }) => ({
+    <Stack
+      initialRouteName="index"
+      screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.label,
-        tabBarIcon: ({ color }) => <Text style={[styles.icon, { color }]}>{icons[route.name] || '•'}</Text>,
-      })}
-    >
-      <Tabs.Screen name="index" options={{ title: 'Tổng quan' }} />
-      <Tabs.Screen name="messages" options={{ title: 'Tin nhắn' }} />
-      <Tabs.Screen name="transport" options={{ title: 'Chuyến xe' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Tài khoản' }} />
-    </Tabs>
+        contentStyle: { backgroundColor: colors.background },
+        animation: 'fade_from_bottom',
+      }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  tabBar: { height: 66, paddingTop: 7, paddingBottom: 8, borderTopColor: colors.border },
-  label: { fontSize: 11, fontWeight: '700' },
-  icon: { fontSize: 21, fontWeight: '800' },
-});

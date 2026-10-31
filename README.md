@@ -11,6 +11,38 @@
 - Danh sách chuyến xe theo đúng quyền của tài khoản.
 - Nền tảng điều hướng từ push notification vào màn hình tương ứng.
 
+## Cấu trúc dự án
+
+Cấu trúc source bám theo `erp-frontend` để một nghiệp vụ có thể được đối chiếu giữa web và mobile theo cùng tên miền:
+
+```text
+src/
+├── app/                    # Chỉ chứa route Expo Router và layout
+├── components/             # App shell, form và UI dùng chung
+├── features/
+│   ├── auth/
+│   ├── catalog/
+│   ├── dashboard/
+│   ├── material-warehouse/
+│   ├── messaging/
+│   ├── navigation/
+│   ├── purchase-monitoring/
+│   ├── purchase-warehouse/
+│   ├── roles/
+│   ├── tools/
+│   ├── transport-catalog/
+│   ├── transport-dispatch/
+│   ├── transport-settlement/
+│   └── users/
+├── navigation/             # Module registry, quyền hiển thị và metadata menu
+├── services/               # API, session, socket và notification
+├── theme/                  # Token giao diện đồng bộ với erp-frontend
+├── types/
+└── utils/
+```
+
+Các miền tham gia menu có `module.ts` mô tả quyền và metadata điều hướng; `screens/`, `components/` giữ phần triển khai. Các file trong `src/app` chỉ kết nối URL tới screen tương ứng để không tạo route ngoài ý muốn.
+
 ## Cấu hình môi trường
 
 Sao chép `.env.example` thành `.env.local` và sửa địa chỉ khi cần:

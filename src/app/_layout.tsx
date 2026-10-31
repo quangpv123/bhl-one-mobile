@@ -28,13 +28,24 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShadowVisible: false, headerTintColor: colors.text }}>
+      <Stack
+        screenOptions={{
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+          headerStyle: { backgroundColor: colors.surface },
+          headerTitleStyle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={Boolean(user)}>
           <Stack.Screen name="(app)" options={{ headerShown: false }} />
           <Stack.Screen name="chat/[id]" options={{ title: 'Tin nhắn' }} />
+          <Stack.Screen name="feature/[key]" options={{ headerShown: false }} />
+          <Stack.Screen name="purchase-warehouse/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="material-record/[kind]/[id]" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
     </>

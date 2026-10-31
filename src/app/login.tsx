@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/auth-context';
 import { getApiErrorMessage } from '@/services/api';
-import { colors } from '@/theme/colors';
+import { colors, shadows, ui } from '@/theme/colors';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -40,20 +40,24 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.brandMark}>
-          <Text style={styles.brandLetter}>B</Text>
-        </View>
-        <Text style={styles.title}>BHL One</Text>
-        <Text style={styles.subtitle}>Kết nối công việc trong một ứng dụng</Text>
+        <View pointerEvents="none" style={styles.glowOne} />
+        <View pointerEvents="none" style={styles.glowTwo} />
 
         <View style={styles.form}>
-          <Text style={styles.label}>Tài khoản</Text>
+          <View style={styles.heading}>
+            <View style={styles.brandMark}><Text style={styles.brandLetter}>E</Text></View>
+            <View>
+              <Text style={styles.title}>Đăng nhập</Text>
+              <Text style={styles.subtitle}>ERP Workspace · BHL One</Text>
+            </View>
+          </View>
+          <Text style={styles.label}>Tên đăng nhập, email hoặc số điện thoại</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
             editable={!submitting}
-            placeholder="Tên đăng nhập, email hoặc số điện thoại"
-            placeholderTextColor="#98A2B3"
+            placeholder="Ví dụ: admin hoặc 0901234567"
+            placeholderTextColor={colors.textPlaceholder}
             style={styles.input}
             value={username}
             onChangeText={setUsername}
@@ -62,7 +66,7 @@ export default function LoginScreen() {
           <TextInput
             editable={!submitting}
             placeholder="Nhập mật khẩu"
-            placeholderTextColor="#98A2B3"
+            placeholderTextColor={colors.textPlaceholder}
             secureTextEntry
             style={styles.input}
             value={password}
@@ -79,44 +83,54 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1, justifyContent: 'center', padding: 24 },
+  safeArea: { flex: 1, backgroundColor: colors.sidebar },
+  page: { flex: 1, justifyContent: 'center', padding: 16, overflow: 'hidden', backgroundColor: colors.sidebar },
+  glowOne: { position: 'absolute', right: -130, top: '9%', width: 340, height: 340, borderRadius: 170, backgroundColor: 'rgba(37, 99, 235, 0.28)' },
+  glowTwo: { position: 'absolute', left: -110, bottom: -150, width: 360, height: 360, borderRadius: 180, backgroundColor: 'rgba(14, 165, 233, 0.12)' },
+  heading: { marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
   brandMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
     backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
-  brandLetter: { color: '#FFFFFF', fontSize: 34, fontWeight: '900' },
-  title: { marginTop: 18, textAlign: 'center', fontSize: 30, fontWeight: '900', color: colors.text },
-  subtitle: { marginTop: 6, textAlign: 'center', color: colors.textMuted, fontSize: 15 },
+  brandLetter: { color: '#FFFFFF', fontSize: 23, fontWeight: '900' },
+  title: { fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text },
+  subtitle: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   form: {
-    marginTop: 36,
-    padding: 20,
-    borderRadius: 20,
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    borderRadius: ui.cardRadius,
     backgroundColor: colors.surface,
-    gap: 10,
+    gap: 9,
+    ...shadows.floating,
   },
-  label: { color: colors.text, fontWeight: '700', marginTop: 4 },
+  label: { color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginTop: 4 },
   input: {
-    minHeight: 50,
+    minHeight: ui.controlHeight,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: ui.radius,
+    paddingHorizontal: 12,
     color: colors.text,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   button: {
-    minHeight: 50,
-    marginTop: 12,
-    borderRadius: 12,
+    minHeight: ui.controlHeight,
+    marginTop: 10,
+    borderRadius: ui.radius,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
   },
-  buttonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
+  buttonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 });
