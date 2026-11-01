@@ -82,15 +82,25 @@ export interface PurchaseWarehouseOverviewResponse {
 
 export interface PurchaseWarehouseTicket {
   id: string;
+  purchaseWarehouseId?: string;
+  warehouseCode?: string;
+  warehouseAddress?: string;
   ticketType: 'IMPORT' | 'EXPORT';
   closesLot: boolean;
   lossWeight: number;
+  lossPercent?: number | null;
+  printTitle: string;
   ticketNumber: string;
   grossWeighedDate: string;
   grossWeighedTime: string;
   tareWeighedDate: string;
   tareWeighedTime: string;
   licensePlate: string;
+  driverPhone?: string | null;
+  driverCitizenId?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
+  bankName?: string | null;
   productName: string;
   cassavaVarietyName?: string | null;
   sellerName: string;
@@ -106,7 +116,48 @@ export interface PurchaseWarehouseTicket {
   status: 'ACTIVE' | 'VOID';
   lockedByLotClosure?: boolean;
   voidReason?: string | null;
+  voidedAt?: string | null;
+  voidedByName?: string | null;
   createdAt: string;
+}
+
+export interface PurchaseWarehouseTicketMutationPayload {
+  ticketType: 'IMPORT' | 'EXPORT';
+  closesLot: boolean;
+  printTitle: string;
+  grossWeighedDate: string;
+  grossWeighedTime: string;
+  tareWeighedDate: string;
+  tareWeighedTime: string;
+  licensePlate: string;
+  driverName: string;
+  driverPhone: string;
+  driverCitizenId: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
+  bankName?: string;
+  productName: string;
+  cassavaVarietyName?: string;
+  sellerName: string;
+  buyerName: string;
+  grossWeight: number;
+  tareWeight: number;
+  price: number;
+  impurityPercent: number;
+  starchPercent: number;
+  reason: string;
+}
+
+export interface PurchaseWarehouseTicketRevision {
+  id: string;
+  ticketId: string;
+  action: 'CREATE' | 'UPDATE';
+  beforeData: Record<string, unknown> | null;
+  afterData: Record<string, unknown>;
+  reason: string;
+  changedBy: string;
+  changedByName: string;
+  changedAt: string;
 }
 
 export interface PurchaseWarehouseTicketSummary {

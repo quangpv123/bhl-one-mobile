@@ -30,6 +30,7 @@ export type AppIconName =
   | 'scan'
   | 'settings'
   | 'logout'
+  | 'download'
   | 'search';
 
 const symbolNames: Record<AppIconName, SymbolViewProps['name']> = {
@@ -61,6 +62,7 @@ const symbolNames: Record<AppIconName, SymbolViewProps['name']> = {
   scan: { ios: 'viewfinder', android: 'document_scanner', web: 'document_scanner' },
   settings: { ios: 'gearshape.fill', android: 'settings', web: 'settings' },
   logout: { ios: 'rectangle.portrait.and.arrow.right', android: 'logout', web: 'logout' },
+  download: { ios: 'arrow.down.doc.fill', android: 'file_download', web: 'download' },
   search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
 };
 
@@ -93,6 +95,7 @@ const fallbackGlyphs: Record<AppIconName, string> = {
   scan: '◎',
   settings: '⚙',
   logout: '↪',
+  download: '↓',
   search: '⌕',
 };
 

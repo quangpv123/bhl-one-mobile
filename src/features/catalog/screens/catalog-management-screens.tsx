@@ -16,11 +16,13 @@ import {
 } from '@/components/ui';
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
-import { api, getApiErrorMessage } from '@/services/api';
+import { api, getApiErrorMessage, hasProtectedApiSession } from '@/services/api';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { PaginatedResponse } from '@/types/business';
+import { pickSpreadsheet, spreadsheetFormData } from '@/utils/document-upload';
 import { formatNumber } from '@/utils/format';
+import { shareProtectedApiFile } from '@/utils/protected-file';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
 
 type ActiveStatus = 'ACTIVE' | 'INACTIVE';
@@ -95,12 +97,14 @@ function ActiveBadge({ status }: { status: ActiveStatus }) {
 }
 
 export function VehiclesScreen() {
-  const { can } = useAuth();
+  const { can, token } = useAuth();
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<VehicleRecord | null | undefined>();
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [draft, setDraft] = useState<VehicleDraft>({
     licensePlate: '',
     vehicleTypeId: '',
@@ -226,12 +230,75 @@ export function VehiclesScreen() {
     ]);
   };
 
+  const downloadImportTemplate = async () => {
+    if (!hasProtectedApiSession(token) || downloadingTemplate) return;
+    setDownloadingTemplate(true);
+    try {
+      await shareProtectedApiFile({
+        path: '/catalog/vehicles/import-template',
+        token,
+        fileName: 'mau-import-xe.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Tải mẫu import xe',
+      });
+    } catch (error) {
+      Alert.alert('Không thể tải file mẫu', getApiErrorMessage(error));
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
+  const importVehicles = async () => {
+    if (importing) return;
+    try {
+      const file = await pickSpreadsheet();
+      if (!file) return;
+      setImporting(true);
+      const response = await api.post<ApiResponse<{ totalCount: number; createdCount: number }>>(
+        '/catalog/vehicles/import',
+        spreadsheetFormData(file),
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120_000,
+        },
+      );
+      await queryClient.invalidateQueries({ queryKey: ['mobile-vehicles'] });
+      Alert.alert(
+        'Import thành công',
+        response.data.message || `Đã thêm ${response.data.data.createdCount} xe từ ${response.data.data.totalCount} dòng dữ liệu.`,
+      );
+    } catch (error) {
+      Alert.alert('Không thể import xe', getApiErrorMessage(error));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const chooseImportAction = () => {
+    Alert.alert('Import danh mục xe', 'Tải file mẫu để nhập đúng định dạng hoặc chọn file Excel đã chuẩn bị.', [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Tải file mẫu', onPress: () => void downloadImportTemplate() },
+      { text: 'Chọn file Excel', onPress: () => void importVehicles() },
+    ]);
+  };
+
   return (
     <>
       <Screen
         title="Phương tiện"
         subtitle="Thông tin xe và tài khoản phụ trách"
-        action={can(permissions.catalogVehiclesCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
+        action={can(permissions.catalogVehiclesCreate) ? (
+          <View style={styles.headerActions}>
+            <AppButton
+              compact
+              tone="secondary"
+              label="Import"
+              loading={importing || downloadingTemplate}
+              onPress={chooseImportAction}
+            />
+            <AppButton compact label="Thêm" disabled={importing || downloadingTemplate} onPress={openCreate} />
+          </View>
+        ) : undefined}
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
@@ -589,6 +656,7 @@ export function AdministrativeUnitsScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 },
   heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
   titleWrap: { flex: 1 },

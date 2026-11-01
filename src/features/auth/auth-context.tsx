@@ -1,7 +1,12 @@
 import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { api, setApiAccessToken, setUnauthorizedHandler } from '@/services/api';
-import { clearStoredAccessToken, getStoredAccessToken, storeAccessToken } from '@/services/session-storage';
+import { api, setApiAccessToken, setUnauthorizedHandler, usesBrowserSession } from '@/services/api';
+import {
+  clearStoredAccessToken,
+  getStoredAccessToken,
+  storeAccessToken,
+  storeLoginIdentifier,
+} from '@/services/session-storage';
 import type { ApiResponse } from '@/types/api';
 import type { User } from '@/types/models';
 
@@ -37,7 +42,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const restoreSession = async () => {
       const storedToken = await getStoredAccessToken();
-      if (!storedToken) return;
+      if (!usesBrowserSession && !storedToken) return;
       setApiAccessToken(storedToken);
       try {
         const response = await api.get<ApiResponse<User>>('/auth/me');
@@ -52,9 +57,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [clearSession]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const response = await api.post<ApiResponse<{ token: string; user: User }>>('/auth/login', { username, password });
-    const nextToken = response.data.data.token;
-    await storeAccessToken(nextToken);
+    const response = await api.post<ApiResponse<{ token?: string; user: User }>>('/auth/login', { username, password });
+    const nextToken = response.data.data.token ?? null;
+    if (!usesBrowserSession) {
+      if (!nextToken) throw new Error('Máy chủ không trả về token đăng nhập cho ứng dụng di động.');
+      await storeAccessToken(nextToken);
+    }
+    await storeLoginIdentifier(username.trim()).catch(() => undefined);
     setApiAccessToken(nextToken);
     setToken(nextToken);
     setUser(response.data.data.user);

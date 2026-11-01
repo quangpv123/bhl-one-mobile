@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui';
 import { colors, ui } from '@/theme/colors';
+import { PasswordInput } from './password-input';
 
 export function ManagementSheet({
   title,
@@ -53,15 +54,22 @@ export function ManagementSheet({
   );
 }
 
-export function FormField({ label, hint, ...props }: TextInputProps & { label: string; hint?: string }) {
+export function FormField({ label, hint, secureTextEntry, ...props }: TextInputProps & { label: string; hint?: string }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        {...props}
-        placeholderTextColor={colors.textPlaceholder}
-        style={[styles.input, props.multiline && styles.textArea, props.editable === false && styles.inputDisabled, props.style]}
-      />
+      {secureTextEntry ? (
+        <PasswordInput
+          {...props}
+          containerStyle={props.editable === false && styles.inputDisabled}
+        />
+      ) : (
+        <TextInput
+          {...props}
+          placeholderTextColor={colors.textPlaceholder}
+          style={[styles.input, props.multiline && styles.textArea, props.editable === false && styles.inputDisabled, props.style]}
+        />
+      )}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );

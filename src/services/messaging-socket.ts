@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 
 import type { DirectMessage } from '@/types/models';
-import { apiBaseUrl } from './api';
+import { apiBaseUrl, getProtectedApiHeaders, hasProtectedApiSession, usesBrowserSession } from './api';
 
 interface ServerToClientEvents {
   'messaging:conversation-updated': (event: { conversationId: string }) => void;
@@ -14,14 +14,16 @@ function socketServerUrl() {
   return apiBaseUrl.replace(/\/api\/v1\/?$/, '');
 }
 
-export function createMessagingSocket(token: string): Socket<ServerToClientEvents> {
+export function createMessagingSocket(token: string | null): Socket<ServerToClientEvents> | null {
+  if (!hasProtectedApiSession(token)) return null;
   return io(socketServerUrl(), {
     autoConnect: true,
     path: '/socket.io',
     transports: ['websocket'],
+    withCredentials: usesBrowserSession,
     reconnection: true,
     reconnectionDelay: 1_000,
     reconnectionDelayMax: 10_000,
-    extraHeaders: { Authorization: `Bearer ${token}` },
+    extraHeaders: getProtectedApiHeaders(token),
   });
 }

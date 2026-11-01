@@ -32,6 +32,35 @@ export interface MessageRecipient {
   role: string;
 }
 
+export type MessageSearchScope = 'ALL' | 'PEOPLE' | 'MESSAGES' | 'GROUPS';
+
+export interface MessageSearchPerson extends MessageRecipient {
+  conversationId: string | null;
+}
+
+export interface MessageSearchMessage {
+  id: string;
+  conversationId: string;
+  conversationName: string;
+  senderFullName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface MessageSearchGroup {
+  conversationId: string;
+  name: string;
+  memberCount: number;
+  lastMessageContent: string | null;
+  lastMessageAt: string | null;
+}
+
+export interface MessageSearchResults {
+  people: MessageSearchPerson[];
+  messages: MessageSearchMessage[];
+  groups: MessageSearchGroup[];
+}
+
 export interface DirectMessage {
   id: string;
   conversationId: string;

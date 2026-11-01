@@ -1,1 +1,5 @@
-export { default } from '@/features/dashboard/screens/dashboard-screen';
+import { Redirect } from 'expo-router';
+
+export default function AppIndex() {
+  return <Redirect href="/(app)/work" />;
+}

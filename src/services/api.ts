@@ -1,8 +1,10 @@
 import { create, isAxiosError, type AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 import type { ApiErrorBody } from '@/types/api';
 
 export const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL || 'https://bhl.io.vn/api/v1';
+export const usesBrowserSession = Platform.OS === 'web';
 
 let accessToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
@@ -10,6 +12,7 @@ let unauthorizedHandler: (() => void) | null = null;
 export const api = create({
   baseURL: apiBaseUrl,
   timeout: 15_000,
+  withCredentials: usesBrowserSession,
   headers: {
     'Content-Type': 'application/json',
     'X-ERP-Client': 'mobile',
@@ -31,6 +34,14 @@ api.interceptors.response.use(
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
+}
+
+export function hasProtectedApiSession(token: string | null | undefined) {
+  return usesBrowserSession || Boolean(token);
+}
+
+export function getProtectedApiHeaders(token: string | null | undefined) {
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {

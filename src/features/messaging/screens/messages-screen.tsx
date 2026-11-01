@@ -24,7 +24,15 @@ import { api, getApiErrorMessage } from '@/services/api';
 import { createMessagingSocket } from '@/services/messaging-socket';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
-import type { MessageConversation, MessageRecipient, SystemBotSettings, SystemBotSummary } from '@/types/models';
+import type {
+  MessageConversation,
+  MessageRecipient,
+  MessageSearchPerson,
+  MessageSearchResults,
+  MessageSearchScope,
+  SystemBotSettings,
+  SystemBotSummary,
+} from '@/types/models';
 import { formatDateTime } from '@/utils/format';
 
 function conversationName(item: MessageConversation) {
@@ -36,14 +44,34 @@ export default function MessagesScreen() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchScope, setSearchScope] = useState<MessageSearchScope>('ALL');
+  const [openingSearchResultId, setOpeningSearchResultId] = useState<string>();
   const conversations = useQuery({
     queryKey: ['conversations'],
     queryFn: async () => (await api.get<ApiResponse<MessageConversation[]>>('/messages/conversations')).data.data,
   });
+  const searchResults = useQuery({
+    queryKey: ['message-global-search-mobile', searchQuery],
+    enabled: Boolean(searchQuery),
+    staleTime: 30_000,
+    queryFn: async () => (
+      await api.get<ApiResponse<MessageSearchResults>>('/messages/search', {
+        params: { query: searchQuery, scope: 'ALL' },
+      })
+    ).data.data,
+  });
 
   useEffect(() => {
-    if (!token) return;
+    const value = searchInput.trim();
+    const timer = setTimeout(() => setSearchQuery(value), 250);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     const socket = createMessagingSocket(token);
+    if (!socket) return;
     const refresh = () => void queryClient.invalidateQueries({ queryKey: ['conversations'] });
     socket.on('messaging:conversation-updated', refresh);
     socket.on('messaging:message-new', refresh);
@@ -51,6 +79,49 @@ export default function MessagesScreen() {
       socket.close();
     };
   }, [queryClient, token]);
+
+  const openConversation = (id: string, fallbackTitle: string, fallbackType: MessageConversation['conversationType'] = 'DIRECT') => {
+    const conversation = conversations.data?.find(item => item.id === id);
+    router.push({
+      pathname: '/chat/[id]',
+      params: {
+        id,
+        title: conversation ? conversationName(conversation) : fallbackTitle,
+        type: conversation?.conversationType ?? fallbackType,
+      },
+    });
+  };
+
+  const openPerson = async (person: MessageSearchPerson) => {
+    if (person.conversationId) {
+      openConversation(person.conversationId, person.fullName);
+      return;
+    }
+    if (openingSearchResultId) return;
+    setOpeningSearchResultId(person.id);
+    try {
+      const response = await api.post<ApiResponse<{ id: string }>>('/messages/conversations', {
+        recipientUserId: person.id,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      openConversation(response.data.data.id, person.fullName);
+    } catch (error) {
+      Alert.alert('Không thể mở cuộc trò chuyện', getApiErrorMessage(error));
+    } finally {
+      setOpeningSearchResultId(undefined);
+    }
+  };
+
+  const isSearching = Boolean(searchInput.trim());
+  const searchReady = searchQuery === searchInput.trim();
+  const showPeople = searchScope === 'ALL' || searchScope === 'PEOPLE';
+  const showMessages = searchScope === 'ALL' || searchScope === 'MESSAGES';
+  const showGroups = searchScope === 'ALL' || searchScope === 'GROUPS';
+  const hasSearchResults = Boolean(
+    (showPeople && searchResults.data?.people.length)
+    || (showMessages && searchResults.data?.messages.length)
+    || (showGroups && searchResults.data?.groups.length),
+  );
 
   return (
     <>
@@ -68,10 +139,101 @@ export default function MessagesScreen() {
         refreshing={conversations.isRefetching}
         onRefresh={() => void conversations.refetch()}
       >
-        {conversations.isLoading ? <LoadingBlock /> : null}
-        {conversations.isError ? <ErrorState text={getApiErrorMessage(conversations.error)} onRetry={() => void conversations.refetch()} /> : null}
-        {!conversations.isLoading && !conversations.data?.length ? <EmptyState text="Chưa có cuộc trò chuyện nào." /> : null}
-        {conversations.data?.map(item => (
+        <SearchField
+          placeholder="Tìm kiếm"
+          value={searchInput}
+          onChangeText={value => {
+            setSearchInput(value);
+            if (!value.trim()) setSearchScope('ALL');
+          }}
+        />
+        {isSearching ? (
+          <ChoiceChips
+            value={searchScope}
+            options={[
+              { value: 'ALL', label: 'Tất cả' },
+              { value: 'PEOPLE', label: 'Mọi người' },
+              { value: 'MESSAGES', label: 'Tin nhắn' },
+              { value: 'GROUPS', label: 'Nhóm' },
+            ]}
+            onChange={setSearchScope}
+          />
+        ) : null}
+
+        {isSearching && (searchResults.isLoading || !searchReady) ? <LoadingBlock /> : null}
+        {isSearching && searchReady && searchResults.isError ? (
+          <ErrorState text={getApiErrorMessage(searchResults.error)} onRetry={() => void searchResults.refetch()} />
+        ) : null}
+        {isSearching && !searchResults.isLoading && searchReady && !searchResults.isError && !hasSearchResults ? (
+          <EmptyState text="Không tìm thấy kết quả." />
+        ) : null}
+        {isSearching && searchReady && showPeople && searchResults.data?.people.length ? (
+          <View style={styles.searchSection}>
+            <Text style={styles.searchSectionTitle}>Mọi người</Text>
+            {searchResults.data.people.map(person => (
+              <Pressable
+                key={person.id}
+                disabled={Boolean(openingSearchResultId)}
+                onPress={() => void openPerson(person)}
+                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+              >
+                <View style={styles.smallAvatar}><Text style={styles.smallAvatarText}>{person.fullName.charAt(0)}</Text></View>
+                <View style={styles.searchResultBody}>
+                  <Text style={styles.recipientName}>{person.fullName}</Text>
+                  <Text style={styles.recipientMeta}>@{person.username}{person.phone ? ` · ${person.phone}` : ''}</Text>
+                </View>
+                {openingSearchResultId === person.id ? <Text style={styles.openingText}>Đang mở…</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {isSearching && searchReady && showMessages && searchResults.data?.messages.length ? (
+          <View style={styles.searchSection}>
+            <Text style={styles.searchSectionTitle}>Tin nhắn</Text>
+            {searchResults.data.messages.map(message => (
+              <Pressable
+                key={message.id}
+                onPress={() => openConversation(message.conversationId, message.conversationName)}
+                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+              >
+                <View style={[styles.smallAvatar, styles.messageAvatar]}><Text style={styles.smallAvatarText}>✉</Text></View>
+                <View style={styles.searchResultBody}>
+                  <View style={styles.searchResultHeading}>
+                    <Text numberOfLines={1} style={styles.recipientName}>{message.conversationName}</Text>
+                    <Text style={styles.time}>{formatDateTime(message.createdAt).slice(0, 5)}</Text>
+                  </View>
+                  <Text numberOfLines={2} style={styles.recipientMeta}>{message.senderFullName}: {message.content}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {isSearching && searchReady && showGroups && searchResults.data?.groups.length ? (
+          <View style={styles.searchSection}>
+            <Text style={styles.searchSectionTitle}>Nhóm</Text>
+            {searchResults.data.groups.map(group => (
+              <Pressable
+                key={group.conversationId}
+                onPress={() => openConversation(group.conversationId, group.name, 'GROUP')}
+                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+              >
+                <View style={[styles.smallAvatar, styles.groupAvatar]}><Text style={styles.smallAvatarText}>●●</Text></View>
+                <View style={styles.searchResultBody}>
+                  <View style={styles.searchResultHeading}>
+                    <Text numberOfLines={1} style={styles.recipientName}>{group.name}</Text>
+                    {group.lastMessageAt ? <Text style={styles.time}>{formatDateTime(group.lastMessageAt).slice(0, 5)}</Text> : null}
+                  </View>
+                  <Text numberOfLines={2} style={styles.recipientMeta}>{group.lastMessageContent || `${group.memberCount} thành viên`}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {!isSearching && conversations.isLoading ? <LoadingBlock /> : null}
+        {!isSearching && conversations.isError ? <ErrorState text={getApiErrorMessage(conversations.error)} onRetry={() => void conversations.refetch()} /> : null}
+        {!isSearching && !conversations.isLoading && !conversations.data?.length ? <EmptyState text="Chưa có cuộc trò chuyện nào." /> : null}
+        {!isSearching ? conversations.data?.map(item => (
           <Pressable
             key={item.id}
             onPress={() => router.push({
@@ -95,7 +257,7 @@ export default function MessagesScreen() {
               <View style={styles.badge}><Text style={styles.badgeText}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text></View>
             ) : null}
           </Pressable>
-        ))}
+        )) : null}
       </Screen>
       {createOpen ? (
         <CreateConversationModal
@@ -380,6 +542,14 @@ const styles = StyleSheet.create({
   meta: { color: colors.primaryDark, fontSize: 10, fontWeight: '700' },
   badge: { minWidth: 24, height: 24, paddingHorizontal: 7, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
   badgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  searchSection: { gap: 7 },
+  searchSectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
+  searchResult: { minHeight: 62, padding: 10, borderRadius: ui.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchResultBody: { flex: 1, minWidth: 0 },
+  searchResultHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  openingText: { color: colors.primary, fontSize: 11, fontWeight: '800' },
+  messageAvatar: { backgroundColor: '#E0F2FE' },
+  groupAvatar: { backgroundColor: '#EDE9FE' },
   modalSafeArea: { flex: 1, backgroundColor: colors.background },
   modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },

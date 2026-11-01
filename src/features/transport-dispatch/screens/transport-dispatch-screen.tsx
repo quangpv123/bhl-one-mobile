@@ -31,7 +31,13 @@ import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { appendMaterialImages, MaterialEvidencePicker } from '@/features/material-warehouse/components/material-document-create';
 import { ManagementSheet } from '@/components/forms/management-form';
-import { api, apiBaseUrl, getApiErrorMessage } from '@/services/api';
+import {
+  api,
+  apiBaseUrl,
+  getApiErrorMessage,
+  getProtectedApiHeaders,
+  hasProtectedApiSession,
+} from '@/services/api';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type {
@@ -875,7 +881,7 @@ function TripHistoryModal({ trip, onClose }: { trip: TransportTrip; onClose: () 
               </View>
               <InfoRow label="Thực hiện bởi" value={event.actorName} />
               {event.expenseType ? <InfoRow label={event.expenseType} value={formatMoney(event.amount)} /> : null}
-              {event.images?.length && token ? (
+              {event.images?.length && hasProtectedApiSession(token) ? (
                 <View style={styles.incidentGallery}>
                   <Text style={styles.incidentGalleryTitle}>Ảnh sự cố ({event.images.length})</Text>
                   <View style={styles.incidentImages}>
@@ -884,7 +890,7 @@ function TripHistoryModal({ trip, onClose }: { trip: TransportTrip; onClose: () 
                         <Image
                           source={{
                             uri: `${apiBaseUrl}/transport/trips/incident-images/${image.id}`,
-                            headers: { Authorization: `Bearer ${token}` },
+                            headers: getProtectedApiHeaders(token),
                           }}
                           style={styles.incidentImage}
                         />
@@ -905,7 +911,7 @@ function TripHistoryModal({ trip, onClose }: { trip: TransportTrip; onClose: () 
             </Card>
           ))}
         </ScrollView>
-        {previewImage && token ? (
+        {previewImage && hasProtectedApiSession(token) ? (
           <Modal visible transparent animationType="fade" onRequestClose={() => setPreviewImage(undefined)}>
             <View style={styles.imagePreviewBackdrop}>
               <Pressable style={styles.imagePreviewClose} onPress={() => setPreviewImage(undefined)}>
@@ -914,7 +920,7 @@ function TripHistoryModal({ trip, onClose }: { trip: TransportTrip; onClose: () 
               <Image
                 source={{
                   uri: `${apiBaseUrl}/transport/trips/incident-images/${previewImage.id}`,
-                  headers: { Authorization: `Bearer ${token}` },
+                  headers: getProtectedApiHeaders(token),
                 }}
                 resizeMode="contain"
                 style={styles.imagePreview}

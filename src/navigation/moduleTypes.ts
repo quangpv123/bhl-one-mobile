@@ -2,7 +2,7 @@ import type { AppIconName } from '@/components/app-icon';
 
 // Route-independent module metadata; keep outside src/app for Expo Router.
 
-export type FeatureGroupKey = 'warehouse' | 'transport' | 'system' | 'tools';
+export type FeatureGroupKey = 'overview' | 'warehouse' | 'transport' | 'catalog' | 'system' | 'tools';
 
 export interface AppFeature {
   key: string;

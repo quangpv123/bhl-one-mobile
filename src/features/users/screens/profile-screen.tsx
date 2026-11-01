@@ -9,11 +9,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PasswordInput } from '@/components/forms/password-input';
 import { Screen } from '@/components/screen';
 import { AppButton, Card, InfoRow, StatusBadge } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
@@ -135,15 +135,10 @@ function PasswordField({ label, value, onChangeText }: { label: string; value: s
   return (
     <View style={{ gap: 7 }}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
+      <PasswordInput
         value={value}
         onChangeText={onChangeText}
         placeholder="••••••••"
-        placeholderTextColor={colors.textPlaceholder}
-        style={styles.input}
       />
     </View>
   );
@@ -167,6 +162,5 @@ const styles = StyleSheet.create({
   save: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   form: { padding: 12, gap: 12 },
   label: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  input: { minHeight: ui.controlHeight, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, color: colors.text },
   hint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: -4 },
 });

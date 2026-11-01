@@ -17,6 +17,7 @@ import {
 } from '@/features/material-warehouse';
 import { PurchaseOverviewScreen } from '@/features/purchase-monitoring';
 import { PurchaseWarehouseListScreen } from '@/features/purchase-warehouse';
+import { ExecutivePurchaseWarehouseDashboardScreen } from '@/features/overview';
 import { RolesScreen } from '@/features/roles';
 import { LicensePlateAiScreen } from '@/features/tools';
 import { TransportRatesScreen } from '@/features/transport-catalog';
@@ -103,6 +104,7 @@ export default function FeatureRoute() {
   if (catalogDescriptor) return <CatalogCrudScreen descriptor={catalogDescriptor} />;
 
   switch (key) {
+    case 'executive-purchase-warehouses': return <ExecutivePurchaseWarehouseDashboardScreen />;
     case 'users': return <UsersScreen />;
     case 'roles': return <RolesScreen />;
     case 'catalog-materials': return <MaterialsScreen />;

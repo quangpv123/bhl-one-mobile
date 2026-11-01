@@ -1,5 +1,6 @@
 import { catalogModule } from '@/features/catalog/module';
 import { materialWarehouseModule } from '@/features/material-warehouse/module';
+import { overviewModule } from '@/features/overview/module';
 import { purchaseMonitoringModule } from '@/features/purchase-monitoring/module';
 import { purchaseWarehouseModule } from '@/features/purchase-warehouse/module';
 import { toolsModule } from '@/features/tools/module';
@@ -14,13 +15,16 @@ export type { AppFeature, AppModule, FeatureGroupKey } from './moduleTypes';
 // Mirrors erp-frontend's module registry without becoming an Expo route.
 
 export const featureGroups: { key: FeatureGroupKey; title: string; subtitle: string }[] = [
+  { key: 'overview', title: 'Tổng quan', subtitle: 'Số liệu điều hành dành cho lãnh đạo' },
   { key: 'warehouse', title: 'Kho & thu mua', subtitle: 'Theo dõi hàng hóa, vật tư và các giao dịch kho' },
   { key: 'transport', title: 'Vận tải', subtitle: 'Điều phối, danh mục và quyết toán vận chuyển' },
-  { key: 'system', title: 'Quản trị hệ thống', subtitle: 'Người dùng, vai trò và danh mục dùng chung' },
+  { key: 'catalog', title: 'Danh mục', subtitle: 'Dữ liệu dùng chung trong toàn hệ thống' },
+  { key: 'system', title: 'Quản trị hệ thống', subtitle: 'Người dùng, vai trò và phân quyền truy cập' },
   { key: 'tools', title: 'Công cụ', subtitle: 'Tiện ích hỗ trợ công việc' },
 ];
 
 export const appModules: readonly AppModule[] = [
+  overviewModule,
   purchaseMonitoringModule,
   purchaseWarehouseModule,
   materialWarehouseModule,

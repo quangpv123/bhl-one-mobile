@@ -18,7 +18,13 @@ import {
 } from '@/components/ui';
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
-import { api, apiBaseUrl, getApiErrorMessage } from '@/services/api';
+import {
+  api,
+  apiBaseUrl,
+  getApiErrorMessage,
+  getProtectedApiHeaders,
+  hasProtectedApiSession,
+} from '@/services/api';
 import { colors, ui } from '@/theme/colors';
 import type {
   MaterialInventoryUnit,
@@ -106,7 +112,7 @@ function EvidenceGallery({
   token: string | null;
   onPreview: (evidence: MaterialEvidence) => void;
 }) {
-  if (!evidence.length || !token) return null;
+  if (!evidence.length || !hasProtectedApiSession(token)) return null;
   return (
     <View style={styles.evidenceGallery}>
       <Text style={styles.evidenceTitle}>Ảnh minh chứng ({evidence.length})</Text>
@@ -116,7 +122,7 @@ function EvidenceGallery({
             <Image
               source={{
                 uri: `${apiBaseUrl}/material-inventory/evidence/${image.id}`,
-                headers: { Authorization: `Bearer ${token}` },
+                headers: getProtectedApiHeaders(token),
               }}
               style={styles.evidenceImage}
             />
@@ -136,7 +142,7 @@ function EvidencePreviewModal({
   token: string | null;
   onClose: () => void;
 }) {
-  if (!evidence || !token) return null;
+  if (!evidence || !hasProtectedApiSession(token)) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.previewBackdrop}>
@@ -146,7 +152,7 @@ function EvidencePreviewModal({
         <Image
           source={{
             uri: `${apiBaseUrl}/material-inventory/evidence/${evidence.id}`,
-            headers: { Authorization: `Bearer ${token}` },
+            headers: getProtectedApiHeaders(token),
           }}
           resizeMode="contain"
           style={styles.previewImage}

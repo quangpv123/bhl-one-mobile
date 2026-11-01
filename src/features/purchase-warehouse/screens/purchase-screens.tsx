@@ -31,7 +31,9 @@ import {
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { appendMaterialImages, MaterialEvidencePicker } from '@/features/material-warehouse/components/material-document-create';
-import { api, getApiErrorMessage } from '@/services/api';
+import { TicketEditSheet } from '@/features/purchase-warehouse/components/ticket-edit-sheet';
+import { TicketRevisionHistorySheet } from '@/features/purchase-warehouse/components/ticket-revision-history-sheet';
+import { api, getApiErrorMessage, hasProtectedApiSession } from '@/services/api';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse, Pagination } from '@/types/api';
 import type {
@@ -142,7 +144,7 @@ export function PurchaseOverviewScreen({ assignedOnly = false }: { assignedOnly?
 
   const exportOverview = async (kind: 'IMPORT' | 'OVERVIEW' | 'ALL') => {
     const reportDate = query.data?.reportDate;
-    if (!token || !reportDate || exporting) return;
+    if (!hasProtectedApiSession(token) || !reportDate || exporting) return;
     setExporting(true);
     try {
       const path = kind === 'ALL'
@@ -209,16 +211,13 @@ export function PurchaseWarehouseDetailScreen({
   warehouseCode?: string;
   warehouseName?: string;
 }) {
-  const { can, token } = useAuth();
+  const { can, token, user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'tickets' | 'payments'>('tickets');
-  const [editingTicket, setEditingTicket] = useState<PurchaseWarehouseTicket>();
-  const [grossWeight, setGrossWeight] = useState('');
-  const [tareWeight, setTareWeight] = useState('');
-  const [price, setPrice] = useState('');
-  const [reason, setReason] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [editingTicket, setEditingTicket] = useState<PurchaseWarehouseTicket | null>();
+  const [historyTicket, setHistoryTicket] = useState<PurchaseWarehouseTicket>();
   const [importing, setImporting] = useState(false);
+  const [downloadingImportTemplate, setDownloadingImportTemplate] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [printingTicketId, setPrintingTicketId] = useState<string>();
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string>();
@@ -244,44 +243,6 @@ export function PurchaseWarehouseDetailScreen({
         })
       ).data,
   });
-
-  const openEdit = (ticket: PurchaseWarehouseTicket) => {
-    setEditingTicket(ticket);
-    setGrossWeight(String(ticket.grossWeight));
-    setTareWeight(String(ticket.tareWeight));
-    setPrice(String(ticket.price ?? 0));
-    setReason('');
-  };
-
-  const saveTicket = async () => {
-    if (!editingTicket) return;
-    const gross = Number(grossWeight.replace(',', '.'));
-    const tare = Number(tareWeight.replace(',', '.'));
-    const nextPrice = Number(price.replace(',', '.'));
-    if (![gross, tare, nextPrice].every(Number.isFinite) || gross < 0 || tare < 0 || nextPrice < 0 || tare > gross) {
-      Alert.alert('Dữ liệu chưa hợp lệ', 'Kiểm tra lại hai lần cân và giá.');
-      return;
-    }
-    if (reason.trim().length < 3) {
-      Alert.alert('Thiếu lý do', 'Lý do chỉnh sửa phải có ít nhất 3 ký tự.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.patch(`/purchase-warehouses/tickets/${editingTicket.id}/weights`, {
-        grossWeight: gross,
-        tareWeight: tare,
-        price: nextPrice,
-        reason: reason.trim(),
-      });
-      await queryClient.invalidateQueries({ queryKey: ['purchase-tickets-mobile', warehouseId] });
-      setEditingTicket(undefined);
-    } catch (error) {
-      Alert.alert('Không thể cập nhật phiếu cân', getApiErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const deleteTicket = (ticket: PurchaseWarehouseTicket) => {
     Alert.alert('Xóa phiếu cân', `Xóa vĩnh viễn phiếu ${ticket.ticketNumber}?`, [
@@ -327,6 +288,32 @@ export function PurchaseWarehouseDetailScreen({
     }
   };
 
+  const downloadTicketImportTemplate = async () => {
+    if (!hasProtectedApiSession(token) || downloadingImportTemplate) return;
+    setDownloadingImportTemplate(true);
+    try {
+      await shareProtectedApiFile({
+        path: `/purchase-warehouses/${warehouseId}/tickets/import-template`,
+        token,
+        fileName: `mau-import-phieu-can-${warehouseCode || warehouseId}.xlsx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Tải mẫu import phiếu cân',
+      });
+    } catch (error) {
+      Alert.alert('Không thể tải file mẫu', getApiErrorMessage(error));
+    } finally {
+      setDownloadingImportTemplate(false);
+    }
+  };
+
+  const chooseTicketImport = () => {
+    Alert.alert('Import phiếu cân', 'Tải file mẫu để nhập đúng định dạng hoặc chọn file Excel đã chuẩn bị.', [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Tải file mẫu', onPress: () => void downloadTicketImportTemplate() },
+      { text: 'Chọn file Excel', onPress: () => void importTickets() },
+    ]);
+  };
+
   const printTicket = async (ticket: PurchaseWarehouseTicket) => {
     if (printingTicketId) return;
     setPrintingTicketId(ticket.id);
@@ -341,7 +328,7 @@ export function PurchaseWarehouseDetailScreen({
   };
 
   const exportTickets = async (template: '2025' | '2026') => {
-    if (!token || exporting) return;
+    if (!hasProtectedApiSession(token) || exporting) return;
     setExporting(true);
     try {
       await shareProtectedApiFile({
@@ -367,7 +354,7 @@ export function PurchaseWarehouseDetailScreen({
   };
 
   const openAttachment = async (attachment: PurchasePayment['attachments'][number]) => {
-    if (!token || openingAttachmentId) return;
+    if (!hasProtectedApiSession(token) || openingAttachmentId) return;
     setOpeningAttachmentId(attachment.id);
     try {
       await shareProtectedApiFile({
@@ -393,7 +380,16 @@ export function PurchaseWarehouseDetailScreen({
         action={
           <View style={styles.headerActions}>
             {tab === 'tickets' && can(permissions.scaleTicketsCreate) ? (
-              <AppButton compact label="Import Excel" loading={importing} onPress={() => void importTickets()} />
+              <AppButton compact label="Thêm phiếu" onPress={() => setEditingTicket(null)} />
+            ) : null}
+            {tab === 'tickets' && user?.role === 'ADMIN' ? (
+              <AppButton
+                compact
+                tone="secondary"
+                label="Import"
+                loading={importing || downloadingImportTemplate}
+                onPress={chooseTicketImport}
+              />
             ) : null}
             {tab === 'tickets' && can(permissions.reportsView) && can(permissions.purchasePaymentsView) ? (
               <AppButton compact tone="secondary" label="Xuất Excel" loading={exporting} onPress={chooseExportTemplate} />
@@ -454,8 +450,10 @@ export function PurchaseWarehouseDetailScreen({
                   <InfoRow label="Giá" value={ticket.price == null ? '—' : formatMoney(ticket.price)} />
                 </View>
                 {ticket.voidReason ? <Text style={styles.voidReason}>Lý do hủy: {ticket.voidReason}</Text> : null}
-                {ticket.status === 'ACTIVE' ? (
-                  <View style={styles.actions}>
+                <View style={styles.actions}>
+                  <AppButton compact tone="ghost" label="Lịch sử" onPress={() => setHistoryTicket(ticket)} />
+                  {ticket.status === 'ACTIVE' ? (
+                    <>
                     <AppButton
                       compact
                       tone="secondary"
@@ -465,14 +463,15 @@ export function PurchaseWarehouseDetailScreen({
                       onPress={() => void printTicket(ticket)}
                     />
                     {!ticket.lockedByLotClosure && can(permissions.scaleTicketsUpdate) ? (
-                      <>
-                        <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(ticket)} />
-                        <AppButton compact tone="ghost" label="Hủy phiếu" onPress={() => setVoidingTicket(ticket)} />
-                      </>
+                      <AppButton compact tone="secondary" label="Sửa" onPress={() => setEditingTicket(ticket)} />
+                    ) : null}
+                    {!ticket.lockedByLotClosure && can(permissions.scaleTicketsVoid) ? (
+                      <AppButton compact tone="ghost" label="Hủy phiếu" onPress={() => setVoidingTicket(ticket)} />
                     ) : null}
                     {!ticket.lockedByLotClosure && can(permissions.scaleTicketsDelete) ? <AppButton compact tone="ghost" label="Xóa" onPress={() => deleteTicket(ticket)} /> : null}
-                  </View>
-                ) : null}
+                    </>
+                  ) : null}
+                </View>
               </Card>
             ))}
           </>
@@ -532,24 +531,22 @@ export function PurchaseWarehouseDetailScreen({
         ) : null}
       </Screen>
 
-      <Modal visible={Boolean(editingTicket)} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditingTicket(undefined)}>
-        <SafeAreaView style={styles.modalSafeArea}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.modalHeader}>
-              <Pressable onPress={() => setEditingTicket(undefined)}><Text style={styles.cancel}>Hủy</Text></Pressable>
-              <Text style={styles.modalTitle}>Sửa phiếu {editingTicket?.ticketNumber}</Text>
-              <Pressable onPress={() => void saveTicket()}><Text style={styles.save}>Lưu</Text></Pressable>
-            </View>
-            <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-              <FormInput label="Hàng + bì (kg)" value={grossWeight} onChangeText={setGrossWeight} keyboardType="decimal-pad" />
-              <FormInput label="Bì (kg)" value={tareWeight} onChangeText={setTareWeight} keyboardType="decimal-pad" />
-              <FormInput label="Giá (đ/kg)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
-              <FormInput label="Lý do chỉnh sửa" value={reason} onChangeText={setReason} multiline />
-              <AppButton label="Lưu thay đổi" loading={saving} onPress={() => void saveTicket()} />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      {editingTicket !== undefined ? (
+        <TicketEditSheet
+          warehouseId={warehouseId}
+          ticket={editingTicket ?? undefined}
+          onClose={() => setEditingTicket(undefined)}
+          onSaved={async () => {
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['purchase-tickets-mobile', warehouseId] }),
+              queryClient.invalidateQueries({ queryKey: ['purchase-overview-mobile'] }),
+              queryClient.invalidateQueries({ queryKey: ['executive-purchase-warehouse-dashboard-mobile'] }),
+            ]);
+            setEditingTicket(undefined);
+          }}
+        />
+      ) : null}
+      {historyTicket ? <TicketRevisionHistorySheet ticket={historyTicket} onClose={() => setHistoryTicket(undefined)} /> : null}
       {voidingTicket ? (
         <ReasonModal
           title={`Hủy phiếu ${voidingTicket.ticketNumber}`}

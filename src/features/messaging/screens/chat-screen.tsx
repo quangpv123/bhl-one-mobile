@@ -6,7 +6,7 @@ import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, Styl
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/auth-context';
-import { api, apiBaseUrl, getApiErrorMessage } from '@/services/api';
+import { api, apiBaseUrl, getApiErrorMessage, getProtectedApiHeaders } from '@/services/api';
 import { createMessagingSocket } from '@/services/messaging-socket';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
@@ -35,8 +35,8 @@ export default function ChatScreen() {
   });
 
   useEffect(() => {
-    if (!token) return;
     const socket = createMessagingSocket(token);
+    if (!socket) return;
     socket.on('messaging:message-new', message => {
       if (message.conversationId !== id || message.senderUserId === user?.id) return;
       queryClient.setQueryData<DirectMessage[]>(['messages', id], current => {
@@ -120,7 +120,7 @@ export default function ChatScreen() {
                       key={attachment.id}
                       source={{
                         uri: `${apiBaseUrl.replace(/\/$/, '')}/messages/attachments/${attachment.id}`,
-                        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                        headers: getProtectedApiHeaders(token),
                       }}
                       resizeMode="cover"
                       style={styles.attachment}

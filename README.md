@@ -6,9 +6,12 @@
 
 - Đăng nhập bằng tài khoản ERP và lưu JWT bằng SecureStore.
 - Điều hướng được bảo vệ theo phiên đăng nhập.
-- Tổng quan tin chưa đọc và chuyến xe đang chạy.
+- Tổng quan điều hành kho thu mua theo quyền lãnh đạo, gồm nhập hôm nay, lũy kế, thanh toán và xuất báo cáo.
 - Danh sách hội thoại, chat văn bản và nhận tin realtime bằng Socket.IO.
+- Tìm kiếm hợp nhất người dùng, tin nhắn và nhóm mà không gọi lại API khi đổi bộ lọc.
 - Danh sách chuyến xe theo đúng quyền của tài khoản.
+- Quản lý phiếu cân đầy đủ: thêm thủ công, sửa toàn bộ thông tin, lịch sử chỉnh sửa, hủy theo quyền và import Excel.
+- Import danh mục xe từ mẫu Excel; người quản lý xe dùng chung danh sách người dùng ERP.
 - Nền tảng điều hướng từ push notification vào màn hình tương ứng.
 
 ## Cấu trúc dự án
@@ -26,6 +29,7 @@ src/
 │   ├── material-warehouse/
 │   ├── messaging/
 │   ├── navigation/
+│   ├── overview/
 │   ├── purchase-monitoring/
 │   ├── purchase-warehouse/
 │   ├── roles/

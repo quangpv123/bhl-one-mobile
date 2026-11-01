@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PasswordInput } from '@/components/forms/password-input';
 import { useAuth } from '@/features/auth/auth-context';
 import { getApiErrorMessage } from '@/services/api';
+import { getStoredLoginIdentifier } from '@/services/session-storage';
 import { colors, shadows, ui } from '@/theme/colors';
 
 export default function LoginScreen() {
@@ -21,20 +23,60 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const usernameEdited = useRef(false);
+  const usernameValue = useRef('');
+  const passwordValue = useRef('');
+  const submittingRef = useRef(false);
+  const autoLoginTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getStoredLoginIdentifier()
+      .then(value => {
+        if (active && value && !usernameEdited.current) {
+          usernameValue.current = value;
+          setUsername(value);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      if (autoLoginTimer.current) clearTimeout(autoLoginTimer.current);
+    };
+  }, []);
 
   const submit = async () => {
-    if (!username.trim() || !password) {
+    const loginIdentifier = usernameValue.current.trim();
+    const currentPassword = passwordValue.current;
+    if (!loginIdentifier || !currentPassword) {
       Alert.alert('Thiếu thông tin', 'Nhập tài khoản và mật khẩu để tiếp tục.');
       return;
     }
+    if (submittingRef.current) return;
+    if (autoLoginTimer.current) {
+      clearTimeout(autoLoginTimer.current);
+      autoLoginTimer.current = null;
+    }
+    submittingRef.current = true;
     setSubmitting(true);
     try {
-      await login(username.trim(), password);
+      await login(loginIdentifier, currentPassword);
     } catch (error) {
+      passwordValue.current = '';
+      setPassword('');
       Alert.alert('Không thể đăng nhập', getApiErrorMessage(error));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
+  };
+
+  const scheduleAutofillLogin = () => {
+    if (autoLoginTimer.current) clearTimeout(autoLoginTimer.current);
+    autoLoginTimer.current = setTimeout(() => {
+      autoLoginTimer.current = null;
+      if (usernameValue.current.trim() && passwordValue.current && !submittingRef.current) void submit();
+    }, 350);
   };
 
   return (
@@ -55,22 +97,32 @@ export default function LoginScreen() {
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="username"
             editable={!submitting}
             placeholder="Ví dụ: admin hoặc 0901234567"
             placeholderTextColor={colors.textPlaceholder}
             style={styles.input}
             value={username}
-            onChangeText={setUsername}
+            onChangeText={value => {
+              const previousValue = usernameValue.current;
+              usernameEdited.current = true;
+              usernameValue.current = value;
+              setUsername(value);
+              if (!previousValue && value.length > 1 && passwordValue.current.length > 1) scheduleAutofillLogin();
+            }}
           />
           <Text style={styles.label}>Mật khẩu</Text>
-          <TextInput
+          <PasswordInput
+            autoComplete="current-password"
             editable={!submitting}
             placeholder="Nhập mật khẩu"
-            placeholderTextColor={colors.textPlaceholder}
-            secureTextEntry
-            style={styles.input}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={value => {
+              const previousValue = passwordValue.current;
+              passwordValue.current = value;
+              setPassword(value);
+              if (!previousValue && value.length > 1 && usernameValue.current.trim()) scheduleAutofillLogin();
+            }}
             onSubmitEditing={() => void submit()}
           />
           <Pressable disabled={submitting} onPress={() => void submit()} style={styles.button}>
