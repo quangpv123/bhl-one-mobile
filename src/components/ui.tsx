@@ -6,14 +6,27 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
   type TextInputProps,
+  type ViewStyle,
 } from 'react-native';
 
 import { colors, shadows, ui } from '@/theme/colors';
 import { AppIcon } from './app-icon';
 
-export function Card({ children, tone = 'default' }: PropsWithChildren<{ tone?: 'default' | 'soft' | 'danger' }>) {
-  return <View style={[styles.card, tone === 'soft' && styles.cardSoft, tone === 'danger' && styles.cardDanger]}>{children}</View>;
+export function Card({
+  children,
+  style,
+  tone = 'default',
+}: PropsWithChildren<{
+  style?: StyleProp<ViewStyle>;
+  tone?: 'default' | 'soft' | 'danger';
+}>) {
+  return (
+    <View style={[styles.card, tone === 'soft' && styles.cardSoft, tone === 'danger' && styles.cardDanger, style]}>
+      {children}
+    </View>
+  );
 }
 
 export function LoadingBlock() {
