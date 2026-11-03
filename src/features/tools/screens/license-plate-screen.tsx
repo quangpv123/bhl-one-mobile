@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   fileName: { color: colors.textMuted, fontSize: 12, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 8, marginVertical: 12 },
   action: { flex: 1 },
-  plate: { color: colors.primaryDark, textAlign: 'center', fontSize: 34, letterSpacing: 2, fontWeight: '900', marginVertical: 16 },
+  plate: { color: colors.primaryDark, textAlign: 'center', fontSize: 34, letterSpacing: 2, fontWeight: '700', marginVertical: 16 },
   plateImage: { width: '100%', height: 100, borderRadius: 10, backgroundColor: '#111827', marginBottom: 12 },
   characters: { color: colors.textMuted, textAlign: 'center', fontSize: 13, marginTop: 12 },
   notFound: { color: colors.danger, lineHeight: 21 },

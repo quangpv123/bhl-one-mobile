@@ -31,7 +31,8 @@ export type AppIconName =
   | 'settings'
   | 'logout'
   | 'download'
-  | 'search';
+  | 'search'
+  | 'more';
 
 const symbolNames: Record<AppIconName, SymbolViewProps['name']> = {
   home: { ios: 'house.fill', android: 'home', web: 'home' },
@@ -64,6 +65,7 @@ const symbolNames: Record<AppIconName, SymbolViewProps['name']> = {
   logout: { ios: 'rectangle.portrait.and.arrow.right', android: 'logout', web: 'logout' },
   download: { ios: 'arrow.down.doc.fill', android: 'file_download', web: 'download' },
   search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
+  more: { ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' },
 };
 
 const fallbackGlyphs: Record<AppIconName, string> = {
@@ -97,6 +99,7 @@ const fallbackGlyphs: Record<AppIconName, string> = {
   logout: '↪',
   download: '↓',
   search: '⌕',
+  more: '•••',
 };
 
 export function AppIcon({

@@ -28,7 +28,7 @@ const catalogDescriptors: Record<string, CatalogCrudDescriptor> = {
   'catalog-products': {
     key: 'products',
     title: 'Danh mục hàng hóa',
-    subtitle: 'Hàng hóa sử dụng trong hoạt động thu mua và cân hàng',
+    subtitle: '',
     singular: 'hàng hóa',
     endpoint: '/catalog/products',
     codeField: 'productCode',
@@ -43,7 +43,7 @@ const catalogDescriptors: Record<string, CatalogCrudDescriptor> = {
   'catalog-cassava-varieties': {
     key: 'cassava-varieties',
     title: 'Danh mục giống sắn',
-    subtitle: 'Giống sắn sử dụng trên phiếu cân',
+    subtitle: '',
     singular: 'giống sắn',
     endpoint: '/catalog/cassava-varieties',
     codeField: 'cassavaVarietyCode',
@@ -58,7 +58,7 @@ const catalogDescriptors: Record<string, CatalogCrudDescriptor> = {
   'catalog-banks': {
     key: 'banks',
     title: 'Danh mục ngân hàng',
-    subtitle: 'Ngân hàng sử dụng trong thông tin thanh toán',
+    subtitle: '',
     singular: 'ngân hàng',
     endpoint: '/catalog/banks',
     codeField: 'bankCode',
@@ -73,7 +73,7 @@ const catalogDescriptors: Record<string, CatalogCrudDescriptor> = {
   'vehicle-types': {
     key: 'vehicle-types',
     title: 'Danh mục loại xe',
-    subtitle: 'Loại phương tiện sử dụng trong vận tải',
+    subtitle: '',
     singular: 'loại xe',
     endpoint: '/catalog/vehicle-types',
     codeField: 'vehicleTypeCode',
@@ -92,7 +92,7 @@ export default function FeatureRoute() {
   const { user } = useAuth();
   const feature = mobileFeatures.find(item => item.key === key);
 
-  if (!feature || !canOpenFeature(feature, user?.permissions ?? [])) {
+  if (!feature || !canOpenFeature(feature, user?.permissions ?? [], user?.role)) {
     return (
       <Screen title="Không có quyền truy cập">
         <EmptyState text="Tài khoản không có quyền sử dụng chức năng này." />
@@ -111,7 +111,6 @@ export default function FeatureRoute() {
     case 'measurement-units': return <MeasurementUnitsScreen />;
     case 'administrative-units': return <AdministrativeUnitsScreen />;
     case 'vehicles': return <VehiclesScreen />;
-    case 'purchase-overview': return <PurchaseOverviewScreen />;
     case 'purchase-monitoring': return <PurchaseOverviewScreen assignedOnly />;
     case 'purchase-warehouses': return <PurchaseWarehouseListScreen />;
     case 'material-inventory': return <MaterialInventoryScreen />;

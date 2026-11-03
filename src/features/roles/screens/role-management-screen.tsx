@@ -194,7 +194,7 @@ export function RolesScreen() {
                   {!role.isSystem && can(permissionCodes.rolesDelete) ? (
                     <AppButton
                       compact
-                      tone="danger"
+                      tone="danger-outline"
                       label="Xóa"
                       disabled={role.userCount > 0}
                       onPress={() => removeRole(role)}
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
   titleWrap: { flex: 1 },
   title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 4 },
+  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 4 },
   badges: { alignItems: 'flex-end', gap: 5 },
   description: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: 10 },
   rows: { marginTop: 10 },
@@ -300,12 +300,12 @@ const styles = StyleSheet.create({
   actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
   permissionHeader: { marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   permissionHeading: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  permissionCount: { color: colors.primaryDark, fontSize: 12, fontWeight: '800' },
+  permissionCount: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
   permissionGroup: { gap: 8, padding: 12, borderRadius: ui.radius, backgroundColor: colors.surfaceSubtle },
   groupHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
   groupTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
   groupCount: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  selectGroup: { color: colors.primary, fontSize: 12, fontWeight: '800' },
+  selectGroup: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   permissionOption: {
     padding: 11,
     borderRadius: ui.radius,
@@ -320,8 +320,8 @@ const styles = StyleSheet.create({
   permissionLocked: { opacity: 0.72 },
   checkbox: { width: 21, height: 21, marginTop: 1, borderRadius: 6, borderWidth: 1, borderColor: '#98A2B3', alignItems: 'center', justifyContent: 'center' },
   checkboxSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
-  checkmark: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  permissionName: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  checkmark: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  permissionName: { color: colors.text, fontSize: 13, fontWeight: '700' },
   permissionNameSelected: { color: colors.primaryDark },
   permissionCode: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   permissionDescription: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 4 },

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppButton } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, apiBaseUrl, getApiErrorMessage, getProtectedApiHeaders } from '@/services/api';
 import { createMessagingSocket } from '@/services/messaging-socket';
@@ -149,9 +150,12 @@ export default function ChatScreen() {
               value={text}
               onChangeText={setText}
             />
-            <Pressable onPress={submit} style={styles.sendButton}>
-              <Text style={styles.sendText}>Gửi</Text>
-            </Pressable>
+            <AppButton
+              label="Gửi"
+              disabled={!text.trim() || send.isPending}
+              loading={send.isPending}
+              onPress={submit}
+            />
           </View>
         )}
       </KeyboardAvoidingView>
@@ -168,16 +172,14 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: '82%', paddingHorizontal: 12, paddingVertical: 9, borderRadius: ui.cardRadius },
   bubbleMine: { backgroundColor: colors.primary, borderBottomRightRadius: 5 },
   bubbleOther: { backgroundColor: colors.surface, borderBottomLeftRadius: 5 },
-  sender: { color: colors.primaryDark, fontSize: 11, fontWeight: '800', marginBottom: 4 },
+  sender: { color: colors.primaryDark, fontSize: 11, fontWeight: '700', marginBottom: 4 },
   messageText: { color: colors.text, fontSize: 15, lineHeight: 21 },
   messageTextMine: { color: '#FFFFFF' },
   attachment: { width: 210, height: 170, borderRadius: 11, marginTop: 5, backgroundColor: '#E4E7EC' },
   composer: { padding: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  imageButton: { width: 40, height: 40, borderRadius: ui.radius, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  imageButton: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   imageButtonText: { color: colors.primaryDark, fontSize: 25, fontWeight: '700' },
   input: { flex: 1, maxHeight: 120, minHeight: ui.controlHeight, paddingHorizontal: 12, paddingVertical: 9, borderRadius: ui.radius, backgroundColor: colors.background, color: colors.text },
-  sendButton: { minHeight: ui.controlHeight, paddingHorizontal: 14, borderRadius: ui.radius, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  sendText: { color: '#FFFFFF', fontWeight: '800' },
   readOnly: { minHeight: 52, padding: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   readOnlyText: { color: colors.textMuted, fontSize: 13 },
 });

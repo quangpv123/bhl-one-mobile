@@ -4,15 +4,14 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import {
+  ActionMenu,
   AppButton,
   Card,
   ChoiceChips,
   EmptyState,
   ErrorState,
-  InfoRow,
   LoadingBlock,
   SearchField,
-  StatusBadge,
 } from '@/components/ui';
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
@@ -20,7 +19,6 @@ import { api, getApiErrorMessage } from '@/services/api';
 import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { PaginatedResponse, RoleOption, UserRecord } from '@/types/business';
-import { formatDateTime } from '@/utils/format';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
 
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
@@ -217,17 +215,20 @@ export function UsersScreen() {
     <>
       <Screen
         title="Người dùng"
-        subtitle="Tài khoản, vai trò và trạng thái truy cập"
-        action={can(permissions.usersCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
         refreshing={usersQuery.isRefetching}
         onRefresh={() => void usersQuery.refetch()}
       >
-        <SearchField
-          placeholder="Tìm tên, SĐT, email hoặc tài khoản..."
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={() => setSearch(searchInput.trim())}
-        />
+        <View style={styles.compactToolbar}>
+          <View style={styles.compactSearch}>
+            <SearchField
+              placeholder="Tìm tên, SĐT, email hoặc tài khoản..."
+              value={searchInput}
+              onChangeText={setSearchInput}
+              onSubmit={() => setSearch(searchInput.trim())}
+            />
+          </View>
+          {can(permissions.usersCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : null}
+        </View>
         <ChoiceChips
           value={status}
           options={[
@@ -251,52 +252,52 @@ export function UsersScreen() {
         {!usersQuery.isLoading && !usersQuery.isError && !usersQuery.data?.data.length ? (
           <EmptyState text="Không có người dùng phù hợp." />
         ) : null}
-        {usersQuery.data?.data.map(target => {
-          const isSelf = target.id === currentUser?.id;
-          const protectedUser = Boolean(target.isPrivileged && !can(permissions.rolesUpdate));
-          const canChangeStatus = target.status === 'ACTIVE'
-            ? can(permissions.usersDelete)
-            : can(permissions.usersUpdate);
-          const canEdit = can(permissions.usersUpdate) && !isSelf && !protectedUser;
-
-          return (
-            <Card key={target.id}>
-              <View style={styles.heading}>
-                <View style={styles.titleWrap}>
-                  <Text style={styles.title}>{target.fullName}</Text>
-                  <Text style={styles.code}>@{target.username}</Text>
+        {usersQuery.data?.data.length ? (
+          <Card style={styles.compactTable}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Họ tên</Text>
+              <Text style={[styles.tableHeaderText, styles.phoneColumn]}>Số điện thoại</Text>
+              <Text style={[styles.tableHeaderText, styles.roleColumn]}>Vai trò</Text>
+              <View style={styles.actionColumn} />
+            </View>
+            {usersQuery.data.data.map((target, index) => {
+              const isSelf = target.id === currentUser?.id;
+              const protectedUser = Boolean(target.isPrivileged && !can(permissions.rolesUpdate));
+              const canChangeStatus = !isSelf && !protectedUser && (target.status === 'ACTIVE'
+                ? can(permissions.usersDelete)
+                : can(permissions.usersUpdate));
+              const canEdit = can(permissions.usersUpdate) && !isSelf && !protectedUser;
+              return (
+                <View
+                  key={target.id}
+                  style={[styles.tableRow, index < usersQuery.data.data.length - 1 && styles.tableRowBorder]}
+                >
+                  <Text numberOfLines={2} style={[styles.tableName, styles.nameColumn]}>{target.fullName}</Text>
+                  <Text numberOfLines={2} style={[styles.tableText, styles.phoneColumn]}>{target.phone || '—'}</Text>
+                  <Text numberOfLines={2} style={[styles.tableText, styles.roleColumn]}>
+                    {roleNames.get(target.role) ?? target.role}
+                  </Text>
+                  <View style={styles.actionColumn}>
+                    {canEdit || canChangeStatus ? (
+                      <ActionMenu
+                        label={`Thao tác với ${target.fullName}`}
+                        items={[
+                          ...(canEdit ? [{ label: 'Chỉnh sửa', onPress: () => openEdit(target) }] : []),
+                          ...(canEdit ? [{ label: 'Đặt lại mật khẩu', onPress: () => openResetPassword(target) }] : []),
+                          ...(canChangeStatus ? [{
+                            label: target.status === 'ACTIVE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản',
+                            tone: target.status === 'ACTIVE' ? 'danger' as const : 'default' as const,
+                            onPress: () => toggleStatus(target),
+                          }] : []),
+                        ]}
+                      />
+                    ) : null}
+                  </View>
                 </View>
-                <View style={styles.badges}>
-                  {isSelf ? <StatusBadge label="Bạn" tone="info" /> : null}
-                  <StatusBadge
-                    label={target.status === 'ACTIVE' ? 'Hoạt động' : 'Đã khóa'}
-                    tone={target.status === 'ACTIVE' ? 'success' : 'danger'}
-                  />
-                </View>
-              </View>
-              <View style={styles.rows}>
-                <InfoRow label="Vai trò" value={roleNames.get(target.role) ?? target.role} />
-                <InfoRow label="Điện thoại" value={target.phone || '—'} />
-                <InfoRow label="Email" value={target.email || '—'} />
-                <InfoRow label="Đăng nhập gần nhất" value={formatDateTime(target.lastLoginAt)} />
-              </View>
-              {!isSelf && !protectedUser && (canEdit || canChangeStatus) ? (
-                <View style={styles.actions}>
-                  {canEdit ? <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(target)} /> : null}
-                  {canEdit ? <AppButton compact tone="ghost" label="Mật khẩu" onPress={() => openResetPassword(target)} /> : null}
-                  {canChangeStatus ? (
-                    <AppButton
-                      compact
-                      tone={target.status === 'ACTIVE' ? 'danger' : 'primary'}
-                      label={target.status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'}
-                      onPress={() => toggleStatus(target)}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
-            </Card>
-          );
-        })}
+              );
+            })}
+          </Card>
+        ) : null}
         {usersQuery.data?.pagination ? (
           <Text style={styles.total}>Tổng {usersQuery.data.pagination.total.toLocaleString('vi-VN')} người dùng</Text>
         ) : null}
@@ -394,12 +395,27 @@ export function UsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
-  titleWrap: { flex: 1 },
-  title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 4 },
-  badges: { alignItems: 'flex-end', gap: 5 },
-  rows: { marginTop: 10 },
-  actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
+  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactSearch: { flex: 1, minWidth: 0 },
+  compactTable: { padding: 0, overflow: 'hidden' },
+  tableHeader: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  tableRow: { minHeight: 58, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  nameColumn: { flex: 1.25, minWidth: 0 },
+  phoneColumn: { flex: 1, minWidth: 0 },
+  roleColumn: { flex: 0.9, minWidth: 0 },
+  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
+  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  tableText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
   total: { color: colors.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 8 },
 });

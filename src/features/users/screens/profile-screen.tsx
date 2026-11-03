@@ -1,8 +1,10 @@
 import Constants from 'expo-constants';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
+  AppState,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +20,12 @@ import { Screen } from '@/components/screen';
 import { AppButton, Card, InfoRow, StatusBadge } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage } from '@/services/api';
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushNotificationState,
+  type PushNotificationState,
+} from '@/services/notifications';
 import { colors, ui } from '@/theme/colors';
 import { formatDateTime } from '@/utils/format';
 
@@ -28,6 +36,21 @@ export default function ProfileScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pushState, setPushState] = useState<PushNotificationState>('unavailable');
+  const [pushLoading, setPushLoading] = useState(true);
+
+  useEffect(() => {
+    const refreshPushState = () => {
+      void getPushNotificationState()
+        .then(setPushState)
+        .finally(() => setPushLoading(false));
+    };
+    refreshPushState();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') refreshPushState();
+    });
+    return () => subscription.remove();
+  }, []);
 
   const confirmLogout = () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất khỏi BHL One?', [
@@ -43,6 +66,41 @@ export default function ProfileScreen() {
     setNewPassword('');
     setConfirmPassword('');
   };
+
+  const updatePushNotifications = async () => {
+    if (pushState === 'unavailable') return;
+    if (pushState === 'denied') {
+      await Linking.openSettings();
+      return;
+    }
+
+    setPushLoading(true);
+    try {
+      if (pushState === 'enabled') {
+        await disablePushNotifications();
+        setPushState('disabled');
+        return;
+      }
+      const nextState = await enablePushNotifications();
+      setPushState(nextState);
+      if (nextState !== 'enabled') {
+        Alert.alert('Chưa bật thông báo', 'Vui lòng cho phép BHL One gửi thông báo trong cài đặt thiết bị.');
+      }
+    } catch (error) {
+      Alert.alert('Không thể cập nhật thông báo', getApiErrorMessage(error));
+      setPushState(await getPushNotificationState().catch(() => pushState));
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const pushDescription = pushState === 'enabled'
+    ? 'Đang nhận tin nhắn mới và thông báo nghiệp vụ khi ứng dụng chạy nền hoặc đã đóng.'
+    : pushState === 'denied'
+      ? 'Quyền thông báo đang bị chặn. Mở cài đặt thiết bị để cấp lại quyền.'
+      : pushState === 'unavailable'
+        ? 'Push native cần bản development hoặc bản cài Android/iOS, không hoạt động trong Expo Go và trình duyệt.'
+        : 'Bật để nhận tin nhắn mới và thông báo nghiệp vụ ngay cả khi không mở ứng dụng.';
 
   const changePassword = async () => {
     if (!currentPassword) {
@@ -105,8 +163,25 @@ export default function ProfileScreen() {
           <Text style={styles.securityDescription}>Đổi mật khẩu định kỳ và không chia sẻ thông tin đăng nhập.</Text>
           <AppButton tone="secondary" label="Đổi mật khẩu" onPress={() => setChangePasswordOpen(true)} />
         </Card>
+        <Card tone="soft">
+          <View style={styles.notificationHeading}>
+            <Text style={styles.securityTitle}>Thông báo đẩy</Text>
+            <StatusBadge
+              label={pushState === 'enabled' ? 'Đang bật' : pushState === 'denied' ? 'Bị chặn' : 'Đang tắt'}
+              tone={pushState === 'enabled' ? 'success' : pushState === 'denied' ? 'danger' : 'neutral'}
+            />
+          </View>
+          <Text style={styles.securityDescription}>{pushDescription}</Text>
+          <AppButton
+            tone="secondary"
+            label={pushState === 'enabled' ? 'Tắt thông báo' : pushState === 'denied' ? 'Mở cài đặt' : 'Bật thông báo'}
+            disabled={pushState === 'unavailable'}
+            loading={pushLoading}
+            onPress={() => void updatePushNotifications()}
+          />
+        </Card>
         <Text style={styles.version}>BHL One phiên bản {Constants.expoConfig?.version || '1.0.0'}</Text>
-        <AppButton tone="danger" label="Đăng xuất" onPress={confirmLogout} />
+        <AppButton tone="danger-outline" label="Đăng xuất" onPress={confirmLogout} />
       </Screen>
 
       <Modal visible={changePasswordOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={closePasswordModal}>
@@ -147,20 +222,21 @@ function PasswordField({ label, value, onChangeText }: { label: string; value: s
 const styles = StyleSheet.create({
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatar: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.primaryDark, fontSize: 23, fontWeight: '800' },
+  avatarText: { color: colors.primaryDark, fontSize: 23, fontWeight: '700' },
   identityText: { flex: 1 },
   name: { color: colors.text, fontSize: 20, fontWeight: '700' },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   details: { marginTop: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   securityTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   securityDescription: { color: colors.textMuted, lineHeight: 20, marginVertical: 8 },
+  notificationHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   version: { color: colors.textMuted, textAlign: 'center', fontSize: 12, marginTop: 8 },
   modalSafeArea: { flex: 1, backgroundColor: colors.background },
   modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   form: { padding: 12, gap: 12 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  label: { color: colors.text, fontSize: 13, fontWeight: '600' },
   hint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: -4 },
 });

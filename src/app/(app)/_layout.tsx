@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 
-import { useNotificationNavigation } from '@/services/notifications';
+import { useAuth } from '@/features/auth/auth-context';
+import { useNotificationNavigation, usePushNotificationRegistration } from '@/services/notifications';
 import { colors } from '@/theme/colors';
 
 /**
@@ -9,7 +10,9 @@ import { colors } from '@/theme/colors';
  * supplies the shared mobile web-like shell.
  */
 export default function AppLayout() {
+  const { user } = useAuth();
   useNotificationNavigation();
+  usePushNotificationRegistration(user?.id);
 
   return (
     <Stack

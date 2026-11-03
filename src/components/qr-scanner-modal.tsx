@@ -73,6 +73,6 @@ const styles = StyleSheet.create({
   cameraWrap: { flex: 1 },
   overlay: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' },
   scanFrame: { width: 250, height: 250, borderWidth: 3, borderColor: '#FFFFFF', borderRadius: ui.cardRadius, backgroundColor: 'transparent' },
-  scanHint: { marginTop: 22, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, overflow: 'hidden', color: '#FFFFFF', backgroundColor: 'rgba(0, 0, 0, 0.62)', fontWeight: '800' },
+  scanHint: { marginTop: 22, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, overflow: 'hidden', color: '#FFFFFF', backgroundColor: 'rgba(0, 0, 0, 0.62)', fontWeight: '700' },
   rescan: { position: 'absolute', left: 24, right: 24, bottom: 30 },
 });

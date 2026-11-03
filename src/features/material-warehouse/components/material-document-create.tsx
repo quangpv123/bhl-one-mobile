@@ -326,7 +326,7 @@ export function CreateMaterialReceiptSheet({ onClose, onSaved }: { onClose: () =
           <Card key={line.key} tone="soft">
             <View style={styles.lineHeading}>
               <Text style={styles.lineTitle}>Dòng {lineIndex + 1}</Text>
-              {lines.length > 1 ? <AppButton compact tone="ghost" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
+              {lines.length > 1 ? <AppButton compact tone="danger-outline" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
             </View>
             <View style={styles.lineFields}>
               <OptionPicker
@@ -527,7 +527,7 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
           <Card key={line.key} tone="soft">
             <View style={styles.lineHeading}>
               <Text style={styles.lineTitle}>Dòng {lineIndex + 1}</Text>
-              {lines.length > 1 ? <AppButton compact tone="ghost" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
+              {lines.length > 1 ? <AppButton compact tone="danger-outline" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
             </View>
             <View style={styles.lineFields}>
               <OptionPicker
@@ -615,13 +615,13 @@ const styles = StyleSheet.create({
   serialBlock: { padding: 11, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 10 },
   evidenceBlock: { gap: 8 },
   evidenceHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  evidenceLabel: { flex: 1, color: colors.text, fontSize: 12, fontWeight: '800' },
+  evidenceLabel: { flex: 1, color: colors.text, fontSize: 12, fontWeight: '600' },
   evidenceEmpty: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic' },
   thumbnails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   thumbnailWrap: { width: 68, height: 68 },
   thumbnail: { width: 68, height: 68, borderRadius: 10, backgroundColor: '#E4E7EC' },
   removeImage: { position: 'absolute', top: -6, right: -6, width: 23, height: 23, borderRadius: 12, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
-  removeImageText: { color: '#FFFFFF', fontSize: 17, fontWeight: '900', lineHeight: 19 },
+  removeImageText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', lineHeight: 19 },
   inlineActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   qrRow: { gap: 9 },
   qrInput: { flex: 1 },

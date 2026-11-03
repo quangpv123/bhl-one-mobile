@@ -4,6 +4,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import {
+  ActionMenu,
   AppButton,
   Card,
   ChoiceChips,
@@ -334,7 +335,7 @@ export function VehiclesScreen() {
                   <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(vehicle)} />
                 ) : null}
                 {can(permissions.catalogVehiclesDelete) ? (
-                  <AppButton compact tone="danger" label="Xóa" onPress={() => remove(vehicle)} />
+                  <AppButton compact tone="danger-outline" label="Xóa" onPress={() => remove(vehicle)} />
                 ) : null}
               </View>
             ) : null}
@@ -551,8 +552,6 @@ export function AdministrativeUnitsScreen() {
     <>
       <Screen
         title="Danh mục Tỉnh / Xã"
-        subtitle="Đơn vị hành chính dùng chung trong hệ thống"
-        action={can(permissions.catalogAdministrativeUnitsCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
@@ -573,41 +572,72 @@ export function AdministrativeUnitsScreen() {
             <AppButton compact tone="secondary" label="Đồng bộ" loading={saving} onPress={sync} />
           ) : null}
         </View>
-        <SearchField
-          placeholder={kind === 'provinces' ? 'Tìm tỉnh/thành phố...' : 'Tìm xã/phường...'}
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={() => setSearch(searchInput.trim())}
-        />
+        <View style={styles.compactToolbar}>
+          <View style={styles.compactSearch}>
+            <SearchField
+              placeholder={kind === 'provinces' ? 'Tìm tỉnh/thành phố...' : 'Tìm xã/phường...'}
+              value={searchInput}
+              onChangeText={setSearchInput}
+              onSubmit={() => setSearch(searchInput.trim())}
+            />
+          </View>
+          {can(permissions.catalogAdministrativeUnitsCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : null}
+        </View>
         {query.isLoading ? <LoadingBlock /> : null}
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có đơn vị hành chính phù hợp." /> : null}
-        {query.data?.data.map(record => (
-          <Card key={record.id}>
-            <View style={styles.heading}>
-              <View style={styles.titleWrap}>
-                <Text style={styles.title}>{kind === 'provinces' ? record.provinceName : record.communeName}</Text>
-                <Text style={styles.code}>{kind === 'provinces' ? record.provinceCode : record.communeCode}</Text>
-              </View>
-              <ActiveBadge status={record.status} />
+        {query.data?.data.length ? (
+          <Card style={styles.compactTable}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, styles.adminCodeColumn]}>Mã</Text>
+              <Text style={[styles.tableHeaderText, styles.adminNameColumn]}>
+                {kind === 'provinces' ? 'Tỉnh/Thành phố' : 'Xã/Phường'}
+              </Text>
+              <Text style={[styles.tableHeaderText, styles.adminStatusColumn]}>Trạng thái</Text>
+              <View style={styles.actionColumn} />
             </View>
-            <View style={styles.rows}>
-              {kind === 'communes' ? <InfoRow label="Tỉnh/Thành phố" value={record.provinceName} /> : null}
-              <InfoRow label="Loại đơn vị" value={record.divisionType || '—'} />
-              <InfoRow label="Nguồn" value={record.source || '—'} />
-            </View>
-            {(can(permissions.catalogAdministrativeUnitsUpdate) || can(permissions.catalogAdministrativeUnitsDelete)) ? (
-              <View style={styles.actions}>
-                {can(permissions.catalogAdministrativeUnitsUpdate) ? (
-                  <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(record)} />
-                ) : null}
-                {can(permissions.catalogAdministrativeUnitsDelete) ? (
-                  <AppButton compact tone="danger" label="Xóa" onPress={() => remove(record)} />
-                ) : null}
-              </View>
-            ) : null}
+            {query.data.data.map((record, index) => {
+              const recordName = kind === 'provinces' ? record.provinceName : record.communeName ?? '—';
+              const recordCode = kind === 'provinces' ? record.provinceCode : record.communeCode ?? '—';
+              const metadata = [kind === 'communes' ? record.provinceName : null, record.divisionType, record.source]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <View
+                  key={record.id}
+                  style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+                >
+                  <Text numberOfLines={2} style={[styles.tableCode, styles.adminCodeColumn]}>{recordCode}</Text>
+                  <View style={styles.adminNameColumn}>
+                    <Text numberOfLines={2} style={styles.tableName}>{recordName}</Text>
+                    {metadata ? <Text numberOfLines={1} style={styles.tableMeta}>{metadata}</Text> : null}
+                  </View>
+                  <View style={styles.adminStatusColumn}>
+                    <StatusBadge
+                      label={record.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
+                      tone={record.status === 'ACTIVE' ? 'success' : 'neutral'}
+                    />
+                  </View>
+                  <View style={styles.actionColumn}>
+                    {can(permissions.catalogAdministrativeUnitsUpdate) || can(permissions.catalogAdministrativeUnitsDelete) ? (
+                      <ActionMenu
+                        label={`Thao tác với ${recordName}`}
+                        items={[
+                          ...(can(permissions.catalogAdministrativeUnitsUpdate)
+                            ? [{ label: 'Chỉnh sửa', onPress: () => openEdit(record) }]
+                            : []),
+                          ...(can(permissions.catalogAdministrativeUnitsDelete)
+                            ? [{ label: 'Xóa', tone: 'danger' as const, onPress: () => remove(record) }]
+                            : []),
+                        ]}
+                      />
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
           </Card>
-        ))}
+        ) : null}
       </Screen>
 
       {editing !== undefined ? (
@@ -658,11 +688,34 @@ export function AdministrativeUnitsScreen() {
 const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 },
+  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactSearch: { flex: 1, minWidth: 0 },
+  compactTable: { padding: 0, overflow: 'hidden' },
+  tableHeader: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  tableRow: { minHeight: 62, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  adminCodeColumn: { flex: 0.7, minWidth: 0 },
+  adminNameColumn: { flex: 1.45, minWidth: 0 },
+  adminStatusColumn: { width: 58, flexShrink: 0 },
+  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
+  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  tableMeta: { color: colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 2 },
   heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
   titleWrap: { flex: 1 },
   title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   plate: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: '700', letterSpacing: 0.5 },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 4 },
+  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 4 },
   rows: { marginTop: 10 },
   actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
 });

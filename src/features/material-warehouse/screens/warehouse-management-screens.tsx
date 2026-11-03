@@ -260,7 +260,7 @@ function WarehouseManagementScreen({ kind }: { kind: WarehouseKind }) {
                 />
               ) : null}
               {can(deletePermission) ? (
-                <AppButton compact tone="danger" label="Xóa" onPress={() => remove(warehouse)} />
+                <AppButton compact tone="danger-outline" label="Xóa" onPress={() => remove(warehouse)} />
               ) : null}
             </View>
           </Card>
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
   titleWrap: { flex: 1 },
   title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 4 },
+  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 4 },
   rows: { marginTop: 10 },
   actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
 });

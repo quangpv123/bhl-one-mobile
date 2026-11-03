@@ -46,3 +46,7 @@ export function firstDayOfMonthIso() {
   return `${today.slice(0, 8)}01`;
 }
 
+export function firstDayOfJuneIso() {
+  return `${todayIso().slice(0, 4)}-06-01`;
+}
+

@@ -38,9 +38,17 @@ export const appModules: readonly AppModule[] = [
 
 export const mobileFeatures = appModules.flatMap(module => module.features);
 
-export function canOpenFeature(feature: AppFeature, permissionCodes: string[]) {
+function isManagementRole(role?: string) {
+  return role === 'ADMIN' || role === 'MANAGER';
+}
+
+export function canOpenFeature(feature: AppFeature, permissionCodes: string[], role?: string) {
   if (feature.permission && !permissionCodes.includes(feature.permission)) return false;
-  if (feature.excludedPermission && permissionCodes.includes(feature.excludedPermission)) return false;
+  if (
+    feature.excludedPermission &&
+    permissionCodes.includes(feature.excludedPermission) &&
+    !isManagementRole(role)
+  ) return false;
   return true;
 }
 

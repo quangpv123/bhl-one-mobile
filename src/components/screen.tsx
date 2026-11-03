@@ -5,10 +5,11 @@ import {
   StyleSheet,
   Text,
   View,
+  type ViewProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, ui } from '@/theme/colors';
+import { colors, typography, ui } from '@/theme/colors';
 import { AppHeader } from './app-shell';
 
 interface ScreenProps extends PropsWithChildren {
@@ -17,6 +18,7 @@ interface ScreenProps extends PropsWithChildren {
   action?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  onTouchStart?: ViewProps['onTouchStart'];
   scrollEnabled?: boolean;
 }
 
@@ -27,6 +29,7 @@ export function Screen({
   children,
   refreshing = false,
   onRefresh,
+  onTouchStart,
   scrollEnabled = true,
 }: ScreenProps) {
   const content = (
@@ -42,7 +45,7 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']} onTouchStart={onTouchStart}>
       <AppHeader title={title} />
       {scrollEnabled ? (
         <ScrollView
@@ -71,6 +74,6 @@ const styles = StyleSheet.create({
   fixedContent: { flex: 1 },
   contextRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 10 },
   contextSpacer: { flex: 1 },
-  subtitle: { flex: 1, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  subtitle: { flex: 1, color: colors.textMuted, ...typography.label, fontWeight: '400' },
   action: { flexShrink: 0, alignItems: 'flex-end' },
 });

@@ -4,12 +4,12 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import {
+  ActionMenu,
   AppButton,
   Card,
   ChoiceChips,
   EmptyState,
   ErrorState,
-  InfoRow,
   LoadingBlock,
   SearchField,
   StatusBadge,
@@ -86,15 +86,6 @@ const statusOptions = [
 
 function parseDecimal(value: string) {
   return Number(value.trim().replace(',', '.'));
-}
-
-function ActiveBadge({ status }: { status: ActiveStatus }) {
-  return (
-    <StatusBadge
-      label={status === 'ACTIVE' ? 'Hoạt động' : 'Ngừng sử dụng'}
-      tone={status === 'ACTIVE' ? 'success' : 'neutral'}
-    />
-  );
 }
 
 export function MaterialsScreen() {
@@ -231,22 +222,25 @@ export function MaterialsScreen() {
     <>
       <Screen
         title="Danh mục vật tư"
-        subtitle="Mã, đơn vị tính, giá và phương thức theo dõi"
-        action={can(permissions.materialsCreate) ? (
-          <View style={styles.headerActions}>
-            <AppButton compact tone="secondary" label="Import" loading={importing} onPress={() => void importCatalog()} />
-            <AppButton compact label="Thêm" onPress={openCreate} />
-          </View>
-        ) : undefined}
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
-        <SearchField
-          placeholder="Tìm mã hoặc tên vật tư..."
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={() => setSearch(searchInput.trim())}
-        />
+        <View style={styles.compactToolbar}>
+          <View style={styles.compactSearch}>
+            <SearchField
+              placeholder="Tìm mã hoặc tên vật tư..."
+              value={searchInput}
+              onChangeText={setSearchInput}
+              onSubmit={() => setSearch(searchInput.trim())}
+            />
+          </View>
+          {can(permissions.materialsCreate) ? (
+            <View style={styles.compactHeaderActions}>
+              <AppButton compact tone="secondary" label="Import" loading={importing} onPress={() => void importCatalog()} />
+              <AppButton compact label="Thêm" onPress={openCreate} />
+            </View>
+          ) : null}
+        </View>
         <ChoiceChips
           value={trackingMode}
           options={[
@@ -259,28 +253,48 @@ export function MaterialsScreen() {
         {query.isLoading ? <LoadingBlock /> : null}
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có vật tư phù hợp." /> : null}
-        {query.data?.data.map(material => (
-          <Card key={material.id}>
-            <View style={styles.heading}>
-              <View style={styles.titleWrap}>
-                <Text style={styles.title}>{material.materialName}</Text>
-                <Text style={styles.code}>{material.materialCode}</Text>
-              </View>
-              <ActiveBadge status={material.status} />
+        {query.data?.data.length ? (
+          <Card style={styles.compactTable}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
+              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Vật tư</Text>
+              <Text style={[styles.tableHeaderText, styles.unitColumn]}>ĐVT</Text>
+              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
+              <View style={styles.actionColumn} />
             </View>
-            <View style={styles.rows}>
-              <InfoRow label="Đơn vị" value={`${material.unitName} (${material.unitSymbol})`} />
-              <InfoRow label="Đơn giá" value={formatMoney(material.price)} emphasize />
-              <InfoRow label="Theo dõi" value={material.trackingMode === 'QR' ? 'Theo QR từng vật tư' : 'Theo số lượng'} />
-              <InfoRow label="Serial NSX" value={material.requireManufacturerSerial ? 'Bắt buộc' : 'Không bắt buộc'} />
-            </View>
-            {can(permissions.materialsUpdate) ? (
-              <View style={styles.actions}>
-                <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(material)} />
+            {query.data.data.map((material, index) => (
+              <View
+                key={material.id}
+                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+              >
+                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>{material.materialCode}</Text>
+                <View style={styles.nameColumn}>
+                  <Text numberOfLines={2} style={styles.tableName}>{material.materialName}</Text>
+                  <Text numberOfLines={1} style={styles.tableMeta}>
+                    {formatMoney(material.price)} · {material.trackingMode === 'QR' ? 'QR' : 'Số lượng'}
+                  </Text>
+                </View>
+                <Text numberOfLines={2} style={[styles.tableUnit, styles.unitColumn]}>
+                  {material.unitSymbol || material.unitName}
+                </Text>
+                <View style={styles.statusColumn}>
+                  <StatusBadge
+                    label={material.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
+                    tone={material.status === 'ACTIVE' ? 'success' : 'neutral'}
+                  />
+                </View>
+                <View style={styles.actionColumn}>
+                  {can(permissions.materialsUpdate) ? (
+                    <ActionMenu
+                      label={`Thao tác với ${material.materialName}`}
+                      items={[{ label: 'Chỉnh sửa', onPress: () => openEdit(material) }]}
+                    />
+                  ) : null}
+                </View>
               </View>
-            ) : null}
+            ))}
           </Card>
-        ))}
+        ) : null}
       </Screen>
 
       {editing !== undefined ? (
@@ -425,41 +439,63 @@ export function MeasurementUnitsScreen() {
     <>
       <Screen
         title="Đơn vị tính"
-        subtitle="Đơn vị và độ chính xác số lượng"
-        action={can(permissions.measurementUnitsCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
-        <SearchField
-          placeholder="Tìm mã, tên hoặc ký hiệu..."
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={() => setSearch(searchInput.trim())}
-        />
+        <View style={styles.compactToolbar}>
+          <View style={styles.compactSearch}>
+            <SearchField
+              placeholder="Tìm mã, tên hoặc ký hiệu..."
+              value={searchInput}
+              onChangeText={setSearchInput}
+              onSubmit={() => setSearch(searchInput.trim())}
+            />
+          </View>
+          {can(permissions.measurementUnitsCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : null}
+        </View>
         {query.isLoading ? <LoadingBlock /> : null}
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có đơn vị tính phù hợp." /> : null}
-        {query.data?.data.map(unit => (
-          <Card key={unit.id}>
-            <View style={styles.heading}>
-              <View style={styles.titleWrap}>
-                <Text style={styles.title}>{unit.unitName}</Text>
-                <Text style={styles.code}>{unit.unitCode} · {unit.symbol}</Text>
-              </View>
-              <ActiveBadge status={unit.status} />
+        {query.data?.data.length ? (
+          <Card style={styles.compactTable}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
+              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Đơn vị</Text>
+              <Text style={[styles.tableHeaderText, styles.unitColumn]}>Ký hiệu</Text>
+              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
+              <View style={styles.actionColumn} />
             </View>
-            <View style={styles.rows}>
-              <InfoRow label="Nhóm" value={unitTypeLabels.get(unit.unitType) ?? unit.unitType} />
-              <InfoRow label="Số lẻ tối đa" value={formatNumber(unit.decimalScale, 0)} />
-              <InfoRow label="Số vật tư" value={formatNumber(unit.materialCount, 0)} />
-            </View>
-            {can(permissions.measurementUnitsUpdate) ? (
-              <View style={styles.actions}>
-                <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(unit)} />
+            {query.data.data.map((unit, index) => (
+              <View
+                key={unit.id}
+                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+              >
+                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>{unit.unitCode}</Text>
+                <View style={styles.nameColumn}>
+                  <Text numberOfLines={2} style={styles.tableName}>{unit.unitName}</Text>
+                  <Text numberOfLines={1} style={styles.tableMeta}>
+                    {unitTypeLabels.get(unit.unitType) ?? unit.unitType} · {formatNumber(unit.decimalScale, 0)} số lẻ · {formatNumber(unit.materialCount, 0)} vật tư
+                  </Text>
+                </View>
+                <Text numberOfLines={2} style={[styles.tableUnit, styles.unitColumn]}>{unit.symbol}</Text>
+                <View style={styles.statusColumn}>
+                  <StatusBadge
+                    label={unit.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
+                    tone={unit.status === 'ACTIVE' ? 'success' : 'neutral'}
+                  />
+                </View>
+                <View style={styles.actionColumn}>
+                  {can(permissions.measurementUnitsUpdate) ? (
+                    <ActionMenu
+                      label={`Thao tác với ${unit.unitName}`}
+                      items={[{ label: 'Chỉnh sửa', onPress: () => openEdit(unit) }]}
+                    />
+                  ) : null}
+                </View>
               </View>
-            ) : null}
+            ))}
           </Card>
-        ))}
+        ) : null}
       </Screen>
 
       {editing !== undefined ? (
@@ -525,12 +561,31 @@ export function MeasurementUnitsScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 7 },
-  heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
-  titleWrap: { flex: 1 },
-  title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 4 },
-  rows: { marginTop: 10 },
-  actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactSearch: { flex: 1, minWidth: 0 },
+  compactHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  compactTable: { padding: 0, overflow: 'hidden' },
+  tableHeader: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  tableRow: { minHeight: 64, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  codeColumn: { flex: 0.65, minWidth: 0 },
+  nameColumn: { flex: 1.25, minWidth: 0 },
+  unitColumn: { width: 46, flexShrink: 0 },
+  statusColumn: { width: 58, flexShrink: 0 },
+  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
+  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  tableMeta: { color: colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 2 },
+  tableUnit: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   helper: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
 });

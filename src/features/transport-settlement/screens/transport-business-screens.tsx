@@ -251,7 +251,7 @@ export function TransportRatesScreen() {
                   <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(rate)} />
                 ) : null}
                 {can(permissions.transportCompensationRatesDelete) ? (
-                  <AppButton compact tone="danger" label="Xóa" onPress={() => remove(rate)} />
+                  <AppButton compact tone="danger-outline" label="Xóa" onPress={() => remove(rate)} />
                 ) : null}
               </View>
             ) : null}
@@ -555,21 +555,21 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1 },
   title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   vehiclePlate: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 12, lineHeight: 18, fontWeight: '800', marginTop: 4 },
+  code: { color: colors.primaryDark, fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 4 },
   description: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: 10 },
   note: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', lineHeight: 18, marginTop: 9 },
   rows: { marginTop: 10 },
   actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
   dateRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   dateField: { flex: 1, gap: 6 },
-  label: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  label: { color: colors.text, fontSize: 12, fontWeight: '600' },
   input: { minHeight: ui.controlHeight, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 11, color: colors.text },
   summaryTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
   summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   summaryBox: { width: '48.7%', padding: 10, borderRadius: ui.smallRadius, backgroundColor: colors.surfaceSubtle },
-  metricLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
-  metricValue: { color: colors.primaryDark, fontSize: 14, fontWeight: '900', marginTop: 5 },
-  costAmount: { color: colors.primaryDark, fontSize: 14, fontWeight: '900' },
-  detailSection: { color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 5 },
+  metricLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
+  metricValue: { color: colors.primaryDark, fontSize: 14, fontWeight: '700', marginTop: 5 },
+  costAmount: { color: colors.primaryDark, fontSize: 14, fontWeight: '700' },
+  detailSection: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 5 },
 });
 

@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Screen } from '@/components/screen';
 import {
+  ActionMenu,
   AppButton,
   Card,
   ChoiceChips,
@@ -53,9 +54,15 @@ interface EditorDraft {
   status: 'ACTIVE' | 'INACTIVE';
 }
 
+const compactCatalogKeys = new Set(['products', 'cassava-varieties', 'banks', 'vehicle-types']);
+
 export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescriptor }) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
+  const isCompactCatalog = compactCatalogKeys.has(descriptor.key);
+  const canCreate = can(descriptor.createPermission);
+  const canUpdate = can(descriptor.updatePermission);
+  const canDelete = can(descriptor.deletePermission);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<CatalogRecord | null>();
@@ -136,20 +143,74 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
         subtitle={descriptor.subtitle}
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
-        action={can(descriptor.createPermission) ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
+        action={!isCompactCatalog && canCreate ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
       >
-        <SearchField
-          placeholder={`Tìm ${descriptor.singular}...`}
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={() => setSearch(searchInput.trim())}
-        />
+        {isCompactCatalog ? (
+          <View style={styles.compactToolbar}>
+            <View style={styles.compactSearch}>
+              <SearchField
+                placeholder={`Tìm ${descriptor.singular}...`}
+                value={searchInput}
+                onChangeText={setSearchInput}
+                onSubmit={() => setSearch(searchInput.trim())}
+              />
+            </View>
+            {canCreate ? <AppButton compact label="Thêm" onPress={openCreate} /> : null}
+          </View>
+        ) : (
+          <SearchField
+            placeholder={`Tìm ${descriptor.singular}...`}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            onSubmit={() => setSearch(searchInput.trim())}
+          />
+        )}
         {query.isLoading ? <LoadingBlock /> : null}
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? (
           <EmptyState text={`Chưa có ${descriptor.singular} nào.`} />
         ) : null}
-        {query.data?.data.map(record => (
+        {isCompactCatalog && query.data?.data.length ? (
+          <Card style={styles.compactTable}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
+              <Text style={[styles.tableHeaderText, styles.nameColumn]}>{descriptor.nameLabel}</Text>
+              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
+              <View style={styles.actionColumn} />
+            </View>
+            {query.data.data.map((record, index) => (
+              <View
+                key={record.id}
+                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+              >
+                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>
+                  {String(record[descriptor.codeField] ?? '—')}
+                </Text>
+                <Text numberOfLines={2} style={[styles.tableName, styles.nameColumn]}>
+                  {String(record[descriptor.nameField] ?? '—')}
+                </Text>
+                <View style={styles.statusColumn}>
+                  <StatusBadge
+                    label={record.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm dừng'}
+                    tone={record.status === 'ACTIVE' ? 'success' : 'neutral'}
+                  />
+                </View>
+                <View style={styles.actionColumn}>
+                  {canUpdate || canDelete ? (
+                    <ActionMenu
+                      label={`Thao tác với ${String(record[descriptor.nameField] ?? descriptor.singular)}`}
+                      items={[
+                        ...(canUpdate ? [{ label: 'Chỉnh sửa', onPress: () => openEdit(record) }] : []),
+                        ...(canDelete ? [{ label: 'Xóa', tone: 'danger' as const, onPress: () => remove(record) }] : []),
+                      ]}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </Card>
+        ) : null}
+        {!isCompactCatalog ? query.data?.data.map(record => (
           <Card key={record.id}>
             <View style={styles.cardHeading}>
               <View style={styles.cardTitleWrap}>
@@ -161,18 +222,14 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
                 tone={record.status === 'ACTIVE' ? 'success' : 'neutral'}
               />
             </View>
-            {(can(descriptor.updatePermission) || can(descriptor.deletePermission)) && (
+            {(canUpdate || canDelete) && (
               <View style={styles.actions}>
-                {can(descriptor.updatePermission) ? (
-                  <AppButton compact tone="secondary" label="Chỉnh sửa" onPress={() => openEdit(record)} />
-                ) : null}
-                {can(descriptor.deletePermission) ? (
-                  <AppButton compact tone="ghost" label="Xóa" onPress={() => remove(record)} />
-                ) : null}
+                {canUpdate ? <AppButton compact tone="secondary" label="Chỉnh sửa" onPress={() => openEdit(record)} /> : null}
+                {canDelete ? <AppButton compact tone="danger-outline" label="Xóa" onPress={() => remove(record)} /> : null}
               </View>
             )}
           </Card>
-        ))}
+        )) : null}
         {query.data?.pagination ? (
           <Text style={styles.total}>Tổng {query.data.pagination.total.toLocaleString('vi-VN')} bản ghi</Text>
         ) : null}
@@ -228,10 +285,32 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
 }
 
 const styles = StyleSheet.create({
+  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactSearch: { flex: 1, minWidth: 0 },
+  compactTable: { padding: 0, overflow: 'hidden' },
+  tableHeader: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  tableRow: { minHeight: 58, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  codeColumn: { flex: 0.8, minWidth: 0 },
+  nameColumn: { flex: 1.35, minWidth: 0 },
+  statusColumn: { width: 82, flexShrink: 0 },
+  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
+  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   cardHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   cardTitleWrap: { flex: 1 },
   cardTitle: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  cardCode: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', marginTop: 5 },
+  cardCode: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 5 },
   actions: { marginTop: 14, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
   total: { color: colors.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 8 },
   modalSafeArea: { flex: 1, backgroundColor: colors.background },
@@ -239,9 +318,9 @@ const styles = StyleSheet.create({
   modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   form: { padding: 12, gap: 10 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  label: { color: colors.text, fontSize: 13, fontWeight: '600', marginTop: 4 },
   input: { minHeight: ui.controlHeight, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, color: colors.text },
   inputDisabled: { backgroundColor: colors.surfaceMuted, color: colors.textMuted },
 });

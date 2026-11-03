@@ -1,6 +1,7 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -8,11 +9,12 @@ import {
   View,
   type StyleProp,
   type TextInputProps,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
-import { colors, shadows, ui } from '@/theme/colors';
-import { AppIcon } from './app-icon';
+import { colors, shadows, typography, ui } from '@/theme/colors';
+import { AppIcon, type AppIconName } from './app-icon';
 
 export function Card({
   children,
@@ -71,40 +73,93 @@ export function AppButton({
   loading = false,
   tone = 'primary',
   compact = false,
+  icon,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
-  tone?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  tone?: 'primary' | 'secondary' | 'success' | 'danger' | 'danger-outline' | 'ghost';
   compact?: boolean;
+  icon?: AppIconName;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
+      hitSlop={5}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         compact && styles.buttonCompact,
         tone === 'secondary' && styles.buttonSecondary,
+        tone === 'success' && styles.buttonSuccess,
         tone === 'danger' && styles.buttonDanger,
+        tone === 'danger-outline' && styles.buttonDangerOutline,
         tone === 'ghost' && styles.buttonGhost,
         (disabled || loading) && styles.buttonDisabled,
         pressed && styles.pressed,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={tone === 'primary' || tone === 'danger' ? '#FFFFFF' : colors.primary} />
+        <>
+          {icon ? <AppIcon name={icon} color={colors.textPlaceholder} size={16} style={styles.buttonLoadingPlaceholder} /> : null}
+          <Text
+            style={[
+              styles.buttonText,
+              tone === 'secondary' && styles.buttonTextSecondary,
+              tone === 'success' && styles.buttonTextSuccess,
+              tone === 'ghost' && styles.buttonTextGhost,
+              (tone === 'danger' || tone === 'danger-outline') && styles.buttonTextDanger,
+              styles.buttonLoadingPlaceholder,
+            ]}
+          >
+            {label}
+          </Text>
+          <ActivityIndicator
+            size="small"
+            style={styles.buttonSpinner}
+            color={
+              tone === 'success'
+                ? colors.success
+                : tone === 'danger' || tone === 'danger-outline'
+                  ? colors.danger
+                  : tone === 'secondary' || tone === 'ghost'
+                    ? colors.textSecondary
+                    : colors.primaryDark
+            }
+          />
+        </>
       ) : (
-        <Text
-          style={[
-            styles.buttonText,
-            (tone === 'secondary' || tone === 'ghost') && styles.buttonTextSecondary,
-          ]}
-        >
-          {label}
-        </Text>
+        <>
+          {icon ? (
+            <AppIcon
+              name={icon}
+              color={
+                tone === 'success'
+                  ? colors.success
+                  : tone === 'danger' || tone === 'danger-outline'
+                    ? colors.danger
+                    : tone === 'secondary' || tone === 'ghost'
+                      ? colors.textSecondary
+                      : colors.primaryDark
+              }
+              size={16}
+            />
+          ) : null}
+          <Text
+            style={[
+              styles.buttonText,
+              tone === 'secondary' && styles.buttonTextSecondary,
+              tone === 'success' && styles.buttonTextSuccess,
+              tone === 'ghost' && styles.buttonTextGhost,
+              (tone === 'danger' || tone === 'danger-outline') && styles.buttonTextDanger,
+            ]}
+          >
+            {label}
+          </Text>
+        </>
       )}
     </Pressable>
   );
@@ -147,11 +202,88 @@ export function InfoRow({ label, value, emphasize = false }: { label: string; va
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
       {typeof value === 'string' || typeof value === 'number' ? (
-        <Text style={[styles.infoValue, emphasize && styles.infoValueEmphasis]}>{value}</Text>
+        <FormattedValue value={value} style={[styles.infoValue, emphasize && styles.infoValueEmphasis]} />
       ) : (
         value
       )}
     </View>
+  );
+}
+
+export function FormattedValue({
+  value,
+  style,
+  numberOfLines,
+}: {
+  value: string | number;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
+  const parts = typeof value === 'string'
+    ? value.match(/^(.*?)(\s+(?:kg|₫|đ|tấn|triệu)|%)$/u)
+    : null;
+  return (
+    <Text numberOfLines={numberOfLines} style={style}>
+      {parts ? <>{parts[1]}<Text style={styles.valueUnit}>{parts[2]}</Text></> : value}
+    </Text>
+  );
+}
+
+export interface ActionMenuItem {
+  label: string;
+  onPress: () => void;
+  tone?: 'default' | 'danger';
+  disabled?: boolean;
+}
+
+export function ActionMenu({ items, label = 'Thao tác khác' }: { items: ActionMenuItem[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Pressable
+        accessibilityLabel={label}
+        accessibilityRole="button"
+        hitSlop={4}
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+      >
+        <AppIcon name="more" color={colors.textSecondary} size={20} />
+      </Pressable>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setOpen(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable accessibilityLabel="Đóng menu thao tác" style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+          <View style={styles.menuCard}>
+            <Text style={styles.menuTitle}>{label}</Text>
+            {items.map((item, index) => (
+              <Pressable
+                accessibilityRole="button"
+                disabled={item.disabled}
+                key={`${item.label}-${index}`}
+                onPress={() => {
+                  setOpen(false);
+                  item.onPress();
+                }}
+                style={({ pressed }) => [
+                  styles.menuItem,
+                  index > 0 && styles.menuItemBorder,
+                  item.disabled && styles.buttonDisabled,
+                  pressed && styles.menuItemPressed,
+                ]}
+              >
+                <Text style={[styles.menuItemText, item.tone === 'danger' && styles.menuItemDanger]}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -214,39 +346,51 @@ const styles = StyleSheet.create({
   center: { paddingVertical: 32, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: colors.textMuted, textAlign: 'center', lineHeight: 21 },
   errorState: { paddingVertical: 30, paddingHorizontal: 18, alignItems: 'center', gap: 10 },
-  errorTitle: { color: colors.danger, fontSize: 16, fontWeight: '800' },
+  errorTitle: { color: colors.danger, ...typography.cardTitle },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  sectionTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '900' },
+  sectionTitle: { flex: 1, color: colors.text, ...typography.sectionTitle },
   button: {
-    minHeight: ui.controlHeight,
-    paddingHorizontal: 14,
-    borderRadius: ui.radius,
-    backgroundColor: colors.primary,
+    minHeight: ui.compactControlHeight,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 5,
   },
-  buttonCompact: { minHeight: ui.compactControlHeight, paddingHorizontal: 9, borderRadius: 7 },
+  buttonCompact: { paddingHorizontal: 8 },
   buttonSecondary: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
-  buttonDanger: { backgroundColor: colors.danger },
-  buttonGhost: { minHeight: ui.compactControlHeight, paddingHorizontal: 8, backgroundColor: 'transparent' },
+  buttonSuccess: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
+  buttonDanger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
+  buttonDangerOutline: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
+  buttonGhost: { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle },
   buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  buttonTextSecondary: { color: colors.primaryDark },
+  buttonText: { color: colors.primaryDark, ...typography.button },
+  buttonTextSecondary: { color: colors.textSecondary },
+  buttonTextSuccess: { color: colors.success },
+  buttonTextGhost: { color: colors.textSecondary },
+  buttonTextDanger: { color: colors.danger },
+  buttonLoadingPlaceholder: { opacity: 0 },
+  buttonSpinner: { position: 'absolute' },
   pressed: { opacity: 0.72 },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.surfaceMuted },
   badgeInfo: { backgroundColor: colors.primarySoft },
   badgeSuccess: { backgroundColor: '#DCFCE7' },
   badgeWarning: { backgroundColor: '#FEF3C7' },
   badgeDanger: { backgroundColor: '#FEE2E2' },
-  badgeText: { color: colors.textMuted, fontSize: 11, fontWeight: '800' },
+  badgeText: { color: colors.textMuted, ...typography.caption, fontWeight: '700' },
   badgeTextInfo: { color: colors.primaryDark },
   badgeTextSuccess: { color: colors.success },
   badgeTextWarning: { color: colors.warning },
   badgeTextDanger: { color: colors.danger },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, paddingVertical: 5 },
-  infoLabel: { flex: 1, color: colors.textMuted, fontSize: 12 },
-  infoValue: { flex: 1.4, color: colors.text, fontSize: 12, fontWeight: '600', textAlign: 'right' },
-  infoValueEmphasis: { color: colors.primaryDark, fontSize: 15, fontWeight: '900' },
+  infoLabel: { flex: 1, color: colors.textMuted, ...typography.label, fontWeight: '400' },
+  infoValue: { flex: 1.4, color: colors.text, ...typography.label, textAlign: 'right' },
+  infoValueEmphasis: { color: colors.primaryDark, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+  valueUnit: { color: colors.textPlaceholder, fontSize: 11, fontWeight: '500' },
   searchWrap: {
     minHeight: ui.controlHeight,
     borderWidth: 1,
@@ -259,8 +403,47 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, minHeight: ui.controlHeight - 2, marginLeft: 8, color: colors.text, fontSize: 14 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { minHeight: 32, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  chip: {
+    minHeight: ui.compactControlHeight,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chipSelected: { backgroundColor: colors.primarySoft, borderColor: colors.primaryBorder },
-  chipText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
+  chipText: { color: colors.textMuted, ...typography.button },
   chipTextSelected: { color: colors.primaryDark },
+  moreButton: {
+    minWidth: ui.compactControlHeight,
+    minHeight: ui.compactControlHeight,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+  },
+  menuCard: {
+    width: '100%',
+    maxWidth: 420,
+    overflow: 'hidden',
+    borderRadius: ui.cardRadius,
+    backgroundColor: colors.surface,
+  },
+  menuTitle: { paddingHorizontal: 16, paddingVertical: 13, color: colors.textMuted, ...typography.label },
+  menuItem: { minHeight: 48, paddingHorizontal: 16, justifyContent: 'center' },
+  menuItemBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  menuItemPressed: { backgroundColor: colors.surfaceMuted },
+  menuItemText: { color: colors.text, ...typography.button, fontSize: 14 },
+  menuItemDanger: { color: colors.danger },
 });

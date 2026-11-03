@@ -9,6 +9,7 @@ import {
 } from '@/services/session-storage';
 import type { ApiResponse } from '@/types/api';
 import type { User } from '@/types/models';
+import { unregisterCurrentPushToken } from '@/services/notifications';
 
 interface AuthContextValue {
   user: User | null;
@@ -75,6 +76,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const logout = useCallback(async () => {
+    await unregisterCurrentPushToken().catch(() => undefined);
     await api.post('/auth/logout').catch(() => undefined);
     await clearSession();
   }, [clearSession]);

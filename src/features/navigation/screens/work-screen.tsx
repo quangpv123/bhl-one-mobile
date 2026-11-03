@@ -10,7 +10,9 @@ import { colors } from '@/theme/colors';
 
 export default function WorkScreen() {
   const { user } = useAuth();
-  const allowedFeatures = mobileFeatures.filter(feature => canOpenFeature(feature, user?.permissions ?? []));
+  const allowedFeatures = mobileFeatures.filter(feature =>
+    canOpenFeature(feature, user?.permissions ?? [], user?.role),
+  );
 
   return (
     <Screen title="Chức năng">
@@ -59,6 +61,6 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
   iconWrap: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
-  title: { color: colors.text, fontSize: 11, lineHeight: 15, fontWeight: '700', textAlign: 'center' },
+  title: { color: colors.text, fontSize: 11, lineHeight: 15, fontWeight: '600', textAlign: 'center' },
 });
 

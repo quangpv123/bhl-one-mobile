@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PasswordInput } from '@/components/forms/password-input';
+import { AppButton } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
 import { getApiErrorMessage } from '@/services/api';
 import { getStoredLoginIdentifier } from '@/services/session-storage';
@@ -125,9 +124,9 @@ export default function LoginScreen() {
             }}
             onSubmitEditing={() => void submit()}
           />
-          <Pressable disabled={submitting} onPress={() => void submit()} style={styles.button}>
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Đăng nhập</Text>}
-          </Pressable>
+          <View style={styles.loginButton}>
+            <AppButton label="Đăng nhập" loading={submitting} onPress={() => void submit()} />
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -152,8 +151,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
   },
-  brandLetter: { color: '#FFFFFF', fontSize: 23, fontWeight: '900' },
-  title: { fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text },
+  brandLetter: { color: '#FFFFFF', fontSize: 23, fontWeight: '700' },
+  title: { fontSize: 28, lineHeight: 32, fontWeight: '700', color: colors.text },
   subtitle: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   form: {
     width: '100%',
@@ -176,13 +175,5 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.surface,
   },
-  button: {
-    minHeight: ui.controlHeight,
-    marginTop: 10,
-    borderRadius: ui.radius,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  buttonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  loginButton: { marginTop: 10 },
 });

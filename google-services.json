@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "863677817411",
+    "project_id": "bhl-one",
+    "storage_bucket": "bhl-one.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:863677817411:android:eb0e68dcea87ef5b392af6",
+        "android_client_info": {
+          "package_name": "vn.io.bhl.one"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAou-7d218JkMYdKK3U0bHj2xXUZMW0OIM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

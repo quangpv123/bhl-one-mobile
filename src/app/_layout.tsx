@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/features/auth/auth-context';
-import '@/services/notifications';
 import { colors } from '@/theme/colors';
 
 const queryClient = new QueryClient({

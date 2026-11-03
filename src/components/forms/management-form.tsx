@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui';
-import { colors, ui } from '@/theme/colors';
+import { colors, typography, ui } from '@/theme/colors';
 import { PasswordInput } from './password-input';
 
 export function ManagementSheet({
@@ -156,14 +156,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  title: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  title: { flex: 1, color: colors.text, ...typography.cardTitle, textAlign: 'center' },
   cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   disabledText: { opacity: 0.45 },
   headerSpacer: { width: 42 },
   content: { padding: 12, gap: 12, paddingBottom: 24 },
   field: { gap: 7 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  label: { color: colors.text, ...typography.label },
   input: {
     minHeight: ui.controlHeight,
     borderRadius: ui.radius,
@@ -207,8 +207,8 @@ const styles = StyleSheet.create({
   },
   optionSelected: { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft },
   optionTextWrap: { flex: 1 },
-  optionTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  optionTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   optionTitleSelected: { color: colors.primaryDark },
   optionDescription: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  check: { color: colors.primary, fontSize: 18, fontWeight: '900' },
+  check: { color: colors.primary, fontSize: 18, fontWeight: '700' },
 });

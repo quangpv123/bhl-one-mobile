@@ -2,7 +2,7 @@ import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
-import { colors, ui } from '@/theme/colors';
+import { colors, typography, ui } from '@/theme/colors';
 import { AppIcon } from './app-icon';
 
 function initials(value?: string) {
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerIconButtonActive: { backgroundColor: colors.primarySoft },
-  headerTitle: { flex: 1, color: colors.text, fontSize: 18, lineHeight: 23, fontWeight: '700' },
+  headerTitle: { flex: 1, color: colors.text, ...typography.screenTitle },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   avatarButton: {
     width: 32,
@@ -111,5 +111,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#DBEAFE',
   },
-  avatarText: { color: colors.primaryDark, fontSize: 12, fontWeight: '800' },
+  avatarText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
 });

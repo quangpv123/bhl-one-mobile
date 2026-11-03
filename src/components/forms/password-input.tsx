@@ -10,7 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, ui } from '@/theme/colors';
+import { colors, typography, ui } from '@/theme/colors';
 
 type PasswordInputProps = Omit<TextInputProps, 'secureTextEntry'> & {
   containerStyle?: StyleProp<ViewStyle>;
@@ -78,5 +78,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   togglePressed: { opacity: 0.62 },
-  toggleText: { color: colors.primaryDark, fontSize: 12, fontWeight: '800' },
+  toggleText: { color: colors.primaryDark, ...typography.label },
 });

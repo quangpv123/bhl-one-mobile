@@ -17,7 +17,11 @@ export const colors = {
   sidebar: '#0F172A',
   sidebarMuted: '#94A3B8',
   danger: '#DC2626',
+  dangerSoft: '#FEF2F2',
+  dangerBorder: '#FCA5A5',
   success: '#15803D',
+  successSoft: '#F0FDF4',
+  successBorder: '#86EFAC',
   warning: '#B45309',
 } as const;
 
@@ -27,25 +31,36 @@ export const colors = {
  * away from the web experience again.
  */
 export const ui = {
-  controlHeight: 40,
-  compactControlHeight: 30,
+  controlHeight: 34,
+  compactControlHeight: 34,
   headerHeight: 66,
   pagePaddingHorizontal: 12,
-  pagePaddingTop: 14,
+  pagePaddingTop: 12,
   pagePaddingBottom: 24,
   radius: 10,
-  cardRadius: 14,
+  cardRadius: 12,
   smallRadius: 8,
-  cardPadding: 14,
-  gap: 12,
+  cardPadding: 12,
+  gap: 10,
+} as const;
+
+export const typography = {
+  screenTitle: { fontSize: 20, lineHeight: 26, fontWeight: '700' as const },
+  sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' as const },
+  cardTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' as const },
+  label: { fontSize: 12, lineHeight: 17, fontWeight: '600' as const },
+  body: { fontSize: 13, lineHeight: 19, fontWeight: '400' as const },
+  value: { fontSize: 17, lineHeight: 23, fontWeight: '700' as const },
+  button: { fontSize: 12, lineHeight: 17, fontWeight: '600' as const },
+  caption: { fontSize: 11, lineHeight: 15, fontWeight: '600' as const },
 } as const;
 
 export const shadows = {
   card: {
     shadowColor: colors.sidebar,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.045,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.025,
+    shadowRadius: 8,
     elevation: 1,
   },
   floating: {
