@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ImagePickerAsset } from "expo-image-picker";
 import * as Print from "expo-print";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -30,6 +30,7 @@ import {
   FormattedValue,
   InfoRow,
   LoadingBlock,
+  SearchField,
   StatusBadge,
 } from "@/components/ui";
 import { useAuth } from "@/features/auth/auth-context";
@@ -38,6 +39,7 @@ import {
   appendMaterialImages,
   MaterialEvidencePicker,
 } from "@/features/material-warehouse/components/material-document-create";
+import { TicketDetailSheet } from "@/features/purchase-warehouse/components/ticket-detail-sheet";
 import { TicketEditSheet } from "@/features/purchase-warehouse/components/ticket-edit-sheet";
 import { TicketRevisionHistorySheet } from "@/features/purchase-warehouse/components/ticket-revision-history-sheet";
 import {
@@ -532,8 +534,12 @@ export function PurchaseWarehouseDetailScreen({
   const { can, token, user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"tickets" | "payments">("tickets");
+  const [ticketPage, setTicketPage] = useState<number>();
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [debouncedTicketSearch, setDebouncedTicketSearch] = useState("");
   const [editingTicket, setEditingTicket] =
     useState<PurchaseWarehouseTicket | null>();
+  const [viewingTicket, setViewingTicket] = useState<PurchaseWarehouseTicket>();
   const [historyTicket, setHistoryTicket] = useState<PurchaseWarehouseTicket>();
   const [importing, setImporting] = useState(false);
   const [downloadingImportTemplate, setDownloadingImportTemplate] =
@@ -550,14 +556,35 @@ export function PurchaseWarehouseDetailScreen({
   const canUpdateTickets = can(permissions.scaleTicketsUpdate);
   const canVoidTickets = can(permissions.scaleTicketsVoid);
   const canDeleteTickets = can(permissions.scaleTicketsDelete);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const nextSearch = ticketSearch.trim();
+      setDebouncedTicketSearch(nextSearch);
+      setTicketPage(nextSearch ? 1 : undefined);
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [ticketSearch]);
+  const ticketSearchActive = Boolean(debouncedTicketSearch);
   const tickets = useQuery({
-    queryKey: ["purchase-tickets-mobile", warehouseId],
+    queryKey: [
+      "purchase-tickets-mobile",
+      warehouseId,
+      debouncedTicketSearch,
+      ticketPage ?? "latest",
+    ],
+    placeholderData: (previousData) => previousData,
     queryFn: async () =>
       (
         await api.get<PurchaseWarehouseTicketsResponse>(
           `/purchase-warehouses/${warehouseId}/tickets`,
           {
-            params: { page: 1, limit: 100, latest: true },
+            params: {
+              page: ticketPage ?? 1,
+              limit: 10,
+              search: debouncedTicketSearch || undefined,
+              latest:
+                ticketPage == null && !ticketSearchActive ? true : undefined,
+            },
           },
         )
       ).data,
@@ -629,6 +656,7 @@ export function PurchaseWarehouseDetailScreen({
           timeout: 120_000,
         },
       );
+      setTicketPage(undefined);
       await queryClient.invalidateQueries({
         queryKey: ["purchase-tickets-mobile", warehouseId],
       });
@@ -744,64 +772,145 @@ export function PurchaseWarehouseDetailScreen({
   };
 
   const activeQuery = tab === "tickets" ? tickets : payments;
+  const ticketPaginationFooter =
+    tab === "tickets" && tickets.data?.data.length ? (
+      <View style={styles.ticketPagination}>
+        <AppButton
+          compact
+          tone="secondary"
+          label="Trước"
+          disabled={tickets.isFetching || tickets.data.pagination.page <= 1}
+          onPress={() =>
+            setTicketPage(Math.max(1, tickets.data.pagination.page - 1))
+          }
+        />
+        <View style={styles.ticketPaginationInfo}>
+          <Text style={styles.ticketPaginationPage}>
+            {`Trang ${tickets.data.pagination.page}/${Math.max(1, tickets.data.pagination.totalPages)}`}
+          </Text>
+          <Text style={styles.ticketPaginationTotal}>
+            {formatNumber(tickets.data.pagination.total, 0)} phiếu
+          </Text>
+        </View>
+        <AppButton
+          compact
+          tone="secondary"
+          label="Sau"
+          disabled={
+            tickets.isFetching ||
+            tickets.data.pagination.page >= tickets.data.pagination.totalPages
+          }
+          onPress={() => setTicketPage(tickets.data.pagination.page + 1)}
+        />
+      </View>
+    ) : undefined;
   return (
     <>
       <Screen
         title={warehouseName || warehouseCode || "Chi tiết kho"}
-        subtitle={
-          warehouseCode ? `Kho ${warehouseCode}` : "Phiếu cân và thanh toán"
-        }
-        action={
-          <View style={styles.headerActions}>
-            {tab === "tickets" && canCreateTickets ? (
-              <AppButton
-                compact
-                label="Thêm phiếu"
-                onPress={() => setEditingTicket(null)}
-              />
-            ) : null}
-            {tab === "tickets" && user?.role === "ADMIN" ? (
-              <AppButton
-                compact
-                tone="secondary"
-                label="Import"
-                loading={importing || downloadingImportTemplate}
-                onPress={chooseTicketImport}
-              />
-            ) : null}
-            {tab === "tickets" &&
-            can(permissions.reportsView) &&
-            can(permissions.purchasePaymentsView) ? (
-              <AppButton
-                compact
-                tone="success"
-                icon="download"
-                label="Xuất Excel"
-                loading={exporting}
-                onPress={chooseExportTemplate}
-              />
-            ) : null}
-            {tab === "payments" && can(permissions.purchasePaymentsCreate) ? (
-              <AppButton
-                compact
-                label="Ghi nhận"
-                onPress={() => setPaymentCreateOpen(true)}
-              />
-            ) : null}
-          </View>
-        }
+        footer={ticketPaginationFooter}
         refreshing={activeQuery.isRefetching}
         onRefresh={() => void activeQuery.refetch()}
+        scrollEnabled={tab === "payments"}
       >
+        <View
+          style={[
+            styles.detailToolbar,
+            tab === "payments" && styles.detailToolbarPayments,
+          ]}
+        >
+          {tab === "tickets" ? (
+            <View style={styles.detailSearch}>
+              <SearchField
+                clearButtonMode="while-editing"
+                placeholder="Tìm..."
+                showIcon={false}
+                value={ticketSearch}
+                onChangeText={setTicketSearch}
+                onSubmit={() => {
+                  const nextSearch = ticketSearch.trim();
+                  setDebouncedTicketSearch(nextSearch);
+                  setTicketPage(nextSearch ? 1 : undefined);
+                }}
+              />
+            </View>
+          ) : null}
+          {tab === "tickets" && canCreateTickets ? (
+            <AppButton
+              compact
+              label="Thêm phiếu"
+              onPress={() => setEditingTicket(null)}
+            />
+          ) : null}
+          {tab === "tickets" && user?.role === "ADMIN" ? (
+            <AppButton
+              compact
+              tone="secondary"
+              label="Nhập Excel"
+              loading={importing || downloadingImportTemplate}
+              onPress={chooseTicketImport}
+            />
+          ) : null}
+          {tab === "tickets" &&
+          can(permissions.reportsView) &&
+          can(permissions.purchasePaymentsView) ? (
+            <AppButton
+              compact
+              tone="success"
+              // icon="download"
+              label="Xuất Excel"
+              loading={exporting}
+              onPress={chooseExportTemplate}
+            />
+          ) : null}
+          {tab === "payments" && can(permissions.purchasePaymentsCreate) ? (
+            <AppButton
+              compact
+              label="Ghi nhận"
+              onPress={() => setPaymentCreateOpen(true)}
+            />
+          ) : null}
+        </View>
+
         {can(permissions.purchasePaymentsView) ? (
-          <ChoiceChips
-            value={tab}
-            options={[
-              { value: "tickets", label: "Phiếu cân" },
-              { value: "payments", label: "Thanh toán" },
-            ]}
-            onChange={setTab}
-          />
+          <View accessibilityRole="tablist" style={styles.detailTabs}>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === "tickets" }}
+              onPress={() => setTab("tickets")}
+              style={[
+                styles.detailTab,
+                tab === "tickets" && styles.detailTabActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.detailTabLabel,
+                  tab === "tickets" && styles.detailTabLabelActive,
+                ]}
+              >
+                Phiếu cân
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === "payments" }}
+              onPress={() => setTab("payments")}
+              style={[
+                styles.detailTab,
+                tab === "payments" && styles.detailTabActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.detailTabLabel,
+                  tab === "payments" && styles.detailTabLabelActive,
+                ]}
+              >
+                Thanh toán
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
 
         {activeQuery.isLoading ? <LoadingBlock /> : null}
@@ -813,9 +922,8 @@ export function PurchaseWarehouseDetailScreen({
         ) : null}
 
         {tab === "tickets" && tickets.data ? (
-          <>
-            <Card tone="soft">
-              <Text style={styles.summaryTitle}>Tổng hợp phiếu cân</Text>
+          <View style={styles.ticketList}>
+            <Card tone="soft" style={styles.ticketSummary}>
               <View style={styles.summaryMetrics}>
                 <View style={[styles.ticketMetric, styles.ticketMetricDivider]}>
                   <Text style={styles.ticketMetricLabel}>
@@ -824,10 +932,12 @@ export function PurchaseWarehouseDetailScreen({
                   <FormattedValue
                     numberOfLines={1}
                     style={styles.ticketMetricValue}
-                    value={formatWeight(tickets.data.summary.totalImportNetWeight)}
+                    value={formatWeight(
+                      tickets.data.summary.totalImportNetWeight,
+                    )}
                   />
                 </View>
-                <View style={styles.ticketMetric}>
+                <View style={[styles.ticketMetric, styles.ticketMetricLast]}>
                   <Text style={styles.ticketMetricLabel}>Tổng tiền</Text>
                   <FormattedValue
                     numberOfLines={1}
@@ -838,124 +948,202 @@ export function PurchaseWarehouseDetailScreen({
               </View>
             </Card>
             {!tickets.data.data.length ? (
-              <EmptyState text="Chưa có phiếu cân." />
-            ) : null}
-            {tickets.data.data.map((ticket) => (
-              <Card
-                key={ticket.id}
-                tone={ticket.status === "VOID" ? "danger" : "default"}
-              >
-                <View style={styles.heading}>
-                  <View style={styles.titleWrap}>
-                    <Text style={styles.ticketNumber}>
-                      #{ticket.ticketNumber} · {ticket.licensePlate}
-                    </Text>
-                    <Text style={styles.ticketMeta}>
-                      {formatDate(ticket.grossWeighedDate)} ·{" "}
-                      {ticket.grossWeighedTime}
-                    </Text>
-                  </View>
-                  <StatusBadge
-                    label={
+              <EmptyState
+                text={
+                  debouncedTicketSearch
+                    ? "Không tìm thấy phiếu phù hợp."
+                    : "Chưa có phiếu cân."
+                }
+              />
+            ) : (
+              <>
+                <View style={styles.ticketTableHeader}>
+                  <Text
+                    style={[
+                      styles.ticketTableHeaderText,
+                      styles.ticketTableInfoColumn,
+                    ]}
+                  >
+                    Phiếu / thời gian
+                  </Text>
+                  <Text
+                    style={[
+                      styles.ticketTableHeaderText,
+                      styles.ticketTableMetricHeader,
+                      styles.ticketTableMetricColumn,
+                    ]}
+                  >
+                    KL sạch (kg)
+                  </Text>
+                  <Text
+                    style={[
+                      styles.ticketTableHeaderText,
+                      styles.ticketTableMetricHeader,
+                      styles.ticketTableMetricColumn,
+                    ]}
+                  >
+                    Đơn giá (đ/kg)
+                  </Text>
+                  <View style={styles.ticketTableActionColumn} />
+                </View>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.ticketRowsScroll}
+                  refreshControl={
+                    <RefreshControl
+                      colors={[colors.primary]}
+                      tintColor={colors.primary}
+                      refreshing={tickets.isRefetching}
+                      onRefresh={() => void tickets.refetch()}
+                    />
+                  }
+                >
+                  {tickets.data.data.map((ticket) => {
+                    const statusLabel =
                       ticket.status === "VOID"
                         ? "Đã hủy"
                         : ticket.ticketType === "IMPORT"
                           ? "Nhập"
-                          : "Xuất"
-                    }
-                    tone={
-                      ticket.status === "VOID"
-                        ? "danger"
-                        : ticket.ticketType === "IMPORT"
-                          ? "success"
-                          : "warning"
-                    }
-                  />
-                </View>
-                <View style={styles.ticketMetrics}>
-                  <View
-                    style={[styles.ticketMetric, styles.ticketMetricDivider]}
-                  >
-                    <Text style={styles.ticketMetricLabel}>
-                      Khối lượng sạch
-                    </Text>
-                    <FormattedValue
-                      numberOfLines={1}
-                      style={styles.ticketMetricValue}
-                      value={formatWeight(ticket.netWeight)}
-                    />
-                  </View>
-                  <View style={styles.ticketMetric}>
-                    <Text style={styles.ticketMetricLabel}>Giá</Text>
-                    <FormattedValue
-                      numberOfLines={1}
-                      style={styles.ticketMetricValue}
-                      value={ticket.price == null ? "—" : formatMoney(ticket.price)}
-                    />
-                  </View>
-                </View>
-                {ticket.voidReason ? (
-                  <Text style={styles.voidReason}>
-                    Lý do hủy: {ticket.voidReason}
-                  </Text>
-                ) : null}
-                <View style={styles.actions}>
-                  <AppButton
-                    compact
-                    tone="secondary"
-                    label="Lịch sử"
-                    onPress={() => setHistoryTicket(ticket)}
-                  />
-                  {ticket.status === "ACTIVE" ? (
-                    <>
-                      {canUpdateTickets ? (
-                        <AppButton
-                          compact
-                          tone="secondary"
-                          label="Sửa"
-                          disabled={ticket.lockedByLotClosure}
-                          onPress={() => setEditingTicket(ticket)}
-                        />
-                      ) : null}
-                      <ActionMenu
-                        label={`Thao tác phiếu #${ticket.ticketNumber}`}
-                        items={[
-                          {
-                            label:
-                              printingTicketId === ticket.id
-                                ? "Đang in phiếu..."
-                                : "In phiếu",
-                            disabled: Boolean(printingTicketId),
-                            onPress: () => void printTicket(ticket),
-                          },
-                          ...(canVoidTickets
-                            ? [
-                                {
-                                  label: "Hủy phiếu",
-                                  tone: "danger" as const,
-                                  disabled: ticket.lockedByLotClosure,
-                                  onPress: () => setVoidingTicket(ticket),
-                                },
-                              ]
-                            : []),
-                          ...(canDeleteTickets
-                            ? [
-                                {
-                                  label: "Xóa",
-                                  tone: "danger" as const,
-                                  disabled: ticket.lockedByLotClosure,
-                                  onPress: () => deleteTicket(ticket),
-                                },
-                              ]
-                            : []),
+                          : ticket.closesLot
+                            ? "Cắt lô"
+                            : "Xuất";
+                    return (
+                      <View
+                        key={ticket.id}
+                        style={[
+                          styles.ticketTableRow,
+                          ticket.status === "VOID" && styles.ticketTableRowVoid,
                         ]}
-                      />
-                    </>
-                  ) : null}
-                </View>
-              </Card>
-            ))}
-          </>
+                      >
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Xem chi tiết phiếu ${ticket.ticketNumber}`}
+                          onPress={() => setViewingTicket(ticket)}
+                          style={({ pressed }) => [
+                            styles.ticketTableRowContent,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <View style={styles.ticketTableInfoColumn}>
+                            <Text
+                              numberOfLines={1}
+                              style={styles.ticketTableTicket}
+                            >
+                              #{ticket.ticketNumber} · {ticket.licensePlate}
+                            </Text>
+                            <Text
+                              numberOfLines={1}
+                              style={styles.ticketTableMeta}
+                            >
+                              <Text
+                                style={[
+                                  styles.ticketTableStatus,
+                                  ticket.status === "VOID"
+                                    ? styles.ticketTableStatusVoid
+                                    : ticket.ticketType === "IMPORT"
+                                      ? styles.ticketTableStatusImport
+                                      : styles.ticketTableStatusExport,
+                                ]}
+                              >
+                                {statusLabel}
+                              </Text>
+                              {" · "}
+                              {formatDate(ticket.grossWeighedDate)} ·{" "}
+                              {ticket.grossWeighedTime.slice(0, 5)}
+                            </Text>
+                            {ticket.voidReason ? (
+                              <Text
+                                numberOfLines={1}
+                                style={styles.ticketTableVoidReason}
+                              >
+                                {ticket.voidReason}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <FormattedValue
+                            numberOfLines={1}
+                            style={[
+                              styles.ticketTableValue,
+                              styles.ticketTableMetricColumn,
+                              ticket.ticketType === "EXPORT" &&
+                                styles.ticketTableValueExport,
+                            ]}
+                            value={formatNumber(ticket.netWeight, 3)}
+                          />
+                          <FormattedValue
+                            numberOfLines={1}
+                            style={[
+                              styles.ticketTableValue,
+                              styles.ticketTableMetricColumn,
+                              ticket.ticketType === "EXPORT" &&
+                                styles.ticketTableValueExport,
+                            ]}
+                            value={
+                              ticket.price == null
+                                ? "—"
+                                : formatNumber(ticket.price, 0)
+                            }
+                          />
+                        </Pressable>
+                        <View style={styles.ticketTableActionColumn}>
+                          <ActionMenu
+                            label={`Thao tác phiếu #${ticket.ticketNumber}`}
+                            items={[
+                              {
+                                label: "Lịch sử",
+                                onPress: () => setHistoryTicket(ticket),
+                              },
+                              ...(ticket.status === "ACTIVE" && canUpdateTickets
+                                ? [
+                                    {
+                                      label: "Sửa",
+                                      disabled: ticket.lockedByLotClosure,
+                                      onPress: () => setEditingTicket(ticket),
+                                    },
+                                  ]
+                                : []),
+                              ...(ticket.status === "ACTIVE"
+                                ? [
+                                    {
+                                      label:
+                                        printingTicketId === ticket.id
+                                          ? "Đang in phiếu..."
+                                          : "In phiếu",
+                                      disabled: Boolean(printingTicketId),
+                                      onPress: () => void printTicket(ticket),
+                                    },
+                                  ]
+                                : []),
+                              ...(ticket.status === "ACTIVE" && canVoidTickets
+                                ? [
+                                    {
+                                      label: "Hủy phiếu",
+                                      tone: "danger" as const,
+                                      disabled: ticket.lockedByLotClosure,
+                                      onPress: () => setVoidingTicket(ticket),
+                                    },
+                                  ]
+                                : []),
+                              ...(ticket.status === "ACTIVE" && canDeleteTickets
+                                ? [
+                                    {
+                                      label: "Xóa",
+                                      tone: "danger" as const,
+                                      disabled: ticket.lockedByLotClosure,
+                                      onPress: () => deleteTicket(ticket),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+          </View>
         ) : null}
 
         {tab === "payments" && payments.data ? (
@@ -1073,12 +1261,21 @@ export function PurchaseWarehouseDetailScreen({
         ) : null}
       </Screen>
 
+      {viewingTicket ? (
+        <TicketDetailSheet
+          ticket={viewingTicket}
+          warehouseCode={warehouseCode}
+          warehouseName={warehouseName}
+          onClose={() => setViewingTicket(undefined)}
+        />
+      ) : null}
       {editingTicket !== undefined ? (
         <TicketEditSheet
           warehouseId={warehouseId}
           ticket={editingTicket ?? undefined}
           onClose={() => setEditingTicket(undefined)}
           onSaved={async () => {
+            const createdTicket = editingTicket === null;
             await Promise.all([
               queryClient.invalidateQueries({
                 queryKey: ["purchase-tickets-mobile", warehouseId],
@@ -1090,6 +1287,7 @@ export function PurchaseWarehouseDetailScreen({
                 queryKey: ["executive-purchase-warehouse-dashboard-mobile"],
               }),
             ]);
+            if (createdTicket) setTicketPage(undefined);
             setEditingTicket(undefined);
           }}
         />
@@ -1360,11 +1558,17 @@ function FormInput({
 }
 
 const styles = StyleSheet.create({
-  headerActions: {
+  detailToolbar: {
+    width: "100%",
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
+    alignItems: "center",
     gap: 7,
+  },
+  detailToolbarPayments: { justifyContent: "flex-end" },
+  detailSearch: {
+    flex: 1,
+    minWidth: 0,
+    height: ui.compactControlHeight,
   },
   reportRangeHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   reportRangeError: {
@@ -1445,6 +1649,155 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   monitoringTotalValue: { color: colors.primaryDark, fontWeight: "700" },
+  detailTabs: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  detailTab: {
+    minHeight: 40,
+    paddingHorizontal: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  detailTabActive: { borderBottomColor: colors.primary },
+  detailTabLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  detailTabLabelActive: { color: colors.primaryDark, fontWeight: "700" },
+  ticketSummary: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 6,
+    borderBottomColor: colors.surfaceMuted,
+  },
+  ticketList: {
+    flex: 1,
+    minHeight: 0,
+    marginHorizontal: -ui.pagePaddingHorizontal,
+  },
+  ticketSummaryTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  ticketTableHeader: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  ticketTableHeaderText: {
+    color: colors.textMuted,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  ticketTableMetricHeader: { textAlign: "right" },
+  ticketRowsScroll: { flex: 1, minHeight: 0 },
+  ticketTableRow: {
+    minHeight: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.surface,
+  },
+  ticketTableRowVoid: { backgroundColor: colors.dangerSoft },
+  ticketTableRowContent: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: "stretch",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  ticketTableInfoColumn: { flex: 1.45, minWidth: 0, paddingRight: 3 },
+  ticketTableMetricColumn: { flex: 0.72, minWidth: 0 },
+  ticketTableActionColumn: {
+    width: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ticketTableTicket: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  ticketTableMeta: {
+    marginTop: 2,
+    minWidth: 0,
+    color: colors.textMuted,
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "500",
+  },
+  ticketTableStatus: {
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "700",
+  },
+  ticketTableStatusImport: { color: colors.success },
+  ticketTableStatusExport: { color: colors.warning },
+  ticketTableStatusVoid: { color: colors.danger },
+  ticketTableVoidReason: {
+    marginTop: 2,
+    color: colors.danger,
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  ticketTableValue: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  ticketTableValueExport: { color: colors.warning },
+  ticketPagination: {
+    minHeight: 54,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  ticketPaginationInfo: { flex: 1, minWidth: 0, alignItems: "center" },
+  ticketPaginationPage: {
+    color: colors.text,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
+  ticketPaginationTotal: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "500",
+  },
   heading: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1460,16 +1813,16 @@ const styles = StyleSheet.create({
   },
   ticketNumber: {
     color: colors.text,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "700",
   },
   ticketMeta: {
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "600",
-    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "500",
+    marginTop: 2,
   },
   code: {
     color: colors.primaryDark,
@@ -1495,42 +1848,32 @@ const styles = StyleSheet.create({
   importValue: { color: colors.success },
   rows: { marginTop: 10 },
   summaryMetrics: {
-    marginTop: 4,
+    marginTop: 0,
     flexDirection: "row",
-    overflow: "hidden",
-    borderRadius: ui.smallRadius,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  ticketMetrics: {
-    marginTop: 12,
-    flexDirection: "row",
-    borderRadius: ui.smallRadius,
-    backgroundColor: colors.surfaceSubtle,
   },
   ticketMetric: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 7,
   },
   ticketMetricDivider: {
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.border,
+    borderRightColor: colors.borderSubtle,
+    paddingRight: 12,
   },
+  ticketMetricLast: { paddingLeft: 12 },
   ticketMetricLabel: {
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "600",
   },
   ticketMetricValue: {
     color: colors.primaryDark,
-    fontSize: 17,
-    lineHeight: 23,
+    fontSize: 16,
+    lineHeight: 21,
     fontWeight: "700",
-    marginTop: 4,
+    marginTop: 2,
   },
   openHint: {
     color: colors.primary,
@@ -1555,8 +1898,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     flexWrap: "wrap",
-    gap: 7,
-    marginTop: 13,
+    alignItems: "center",
+    gap: 2,
+    marginTop: 4,
   },
   paymentAmount: {
     color: colors.primaryDark,

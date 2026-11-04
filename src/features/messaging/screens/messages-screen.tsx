@@ -529,7 +529,7 @@ function BotSettingsModal({ onClose }: { onClose: () => void }) {
 
 const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 7 },
-  item: { minHeight: 74, padding: 12, borderRadius: ui.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  item: { minHeight: 74, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderSubtle, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 },
   pressed: { opacity: 0.72 },
   avatar: { width: 46, height: 46, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   avatarSystem: { backgroundColor: '#EDE9FE' },
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   searchSection: { gap: 7 },
   searchSectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  searchResult: { minHeight: 62, padding: 10, borderRadius: ui.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchResult: { minHeight: 62, padding: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderSubtle, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchResultBody: { flex: 1, minWidth: 0 },
   searchResultHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   openingText: { color: colors.primary, fontSize: 11, fontWeight: '700' },

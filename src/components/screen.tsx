@@ -16,6 +16,7 @@ interface ScreenProps extends PropsWithChildren {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  footer?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   onTouchStart?: ViewProps['onTouchStart'];
@@ -26,6 +27,7 @@ export function Screen({
   title,
   subtitle,
   action,
+  footer,
   children,
   refreshing = false,
   onRefresh,
@@ -45,10 +47,15 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']} onTouchStart={onTouchStart}>
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={['top', 'right', 'bottom', 'left']}
+      onTouchStart={onTouchStart}
+    >
       <AppHeader title={title} />
       {scrollEnabled ? (
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={styles.content}
           refreshControl={onRefresh ? (
             <RefreshControl colors={[colors.primary]} tintColor={colors.primary} refreshing={refreshing} onRefresh={onRefresh} />
@@ -59,12 +66,14 @@ export function Screen({
       ) : (
         <View style={[styles.content, styles.fixedContent]}>{content}</View>
       )}
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1 },
   content: {
     paddingTop: ui.pagePaddingTop,
     paddingHorizontal: ui.pagePaddingHorizontal,
@@ -72,6 +81,7 @@ const styles = StyleSheet.create({
     gap: ui.gap,
   },
   fixedContent: { flex: 1 },
+  footer: { flexShrink: 0, backgroundColor: colors.surface },
   contextRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 10 },
   contextSpacer: { flex: 1 },
   subtitle: { flex: 1, color: colors.textMuted, ...typography.label, fontWeight: '400' },

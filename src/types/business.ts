@@ -89,6 +89,10 @@ export interface PurchaseWarehouseTicket {
   closesLot: boolean;
   lossWeight: number;
   lossPercent?: number | null;
+  lotImportWeight?: number | null;
+  lotExportWeight?: number | null;
+  lotPurchaseAmount?: number | null;
+  lotActualAveragePrice?: number | null;
   printTitle: string;
   ticketNumber: string;
   grossWeighedDate: string;
