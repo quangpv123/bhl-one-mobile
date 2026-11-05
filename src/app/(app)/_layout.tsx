@@ -4,6 +4,10 @@ import { useAuth } from '@/features/auth/auth-context';
 import { useNotificationNavigation, usePushNotificationRegistration } from '@/services/notifications';
 import { colors } from '@/theme/colors';
 
+export const unstable_settings = {
+  anchor: 'index',
+};
+
 /**
  * The responsive ERP uses one application shell and a drawer instead of a
  * native bottom tab bar. Screens keep their own URLs, while Screen/AppHeader
@@ -16,7 +20,6 @@ export default function AppLayout() {
 
   return (
     <Stack
-      initialRouteName="index"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },

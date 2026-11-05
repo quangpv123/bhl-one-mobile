@@ -1,10 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui';
-import { colors, ui } from '@/theme/colors';
 
 export function QrScannerModal({
   title = 'Quét mã QR vật tư',
@@ -20,24 +19,24 @@ export function QrScannerModal({
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <SafeAreaView style={styles.page}>
-        <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={8}><Text style={styles.close}>Đóng</Text></Pressable>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.spacer} />
+      <SafeAreaView className="flex-1 bg-black">
+        <View className="min-h-header flex-row items-center justify-between gap-3 bg-surface px-3">
+          <Pressable onPress={onClose} hitSlop={8}><Text className="text-sm font-bold text-primary">Đóng</Text></Pressable>
+          <Text className="flex-1 text-center text-card font-bold text-content">{title}</Text>
+          <View className="w-[38px]" />
         </View>
-        {!permission ? <View style={styles.center}><Text style={styles.hint}>Đang kiểm tra quyền camera…</Text></View> : null}
+        {!permission ? <View className="flex-1 items-center justify-center gap-3.5 bg-background p-7"><Text className="text-center text-sm leading-[21px] text-content-muted">Đang kiểm tra quyền camera…</Text></View> : null}
         {permission && !permission.granted ? (
-          <View style={styles.center}>
-            <Text style={styles.permissionTitle}>Cần quyền camera</Text>
-            <Text style={styles.hint}>Cho phép BHL One sử dụng camera để đọc mã QR vật tư.</Text>
+          <View className="flex-1 items-center justify-center gap-3.5 bg-background p-7">
+            <Text className="text-xl font-bold text-content">Cần quyền camera</Text>
+            <Text className="text-center text-sm leading-[21px] text-content-muted">Cho phép BHL One sử dụng camera để đọc mã QR vật tư.</Text>
             <AppButton label="Cho phép camera" onPress={() => void requestPermission()} />
           </View>
         ) : null}
         {permission?.granted ? (
-          <View style={styles.cameraWrap}>
+          <View className="flex-1">
             <CameraView
-              style={StyleSheet.absoluteFill}
+              className="absolute inset-0"
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
               onBarcodeScanned={scanned ? undefined : result => {
@@ -45,12 +44,12 @@ export function QrScannerModal({
                 onDetected(result.data);
               }}
             />
-            <View pointerEvents="none" style={styles.overlay}>
-              <View style={styles.scanFrame} />
-              <Text style={styles.scanHint}>Đưa mã QR vào giữa khung hình</Text>
+            <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
+              <View className="h-[250px] w-[250px] rounded-card border-[3px] border-white bg-transparent" />
+              <Text className="mt-[22px] overflow-hidden rounded-full bg-[rgba(0,0,0,0.62)] px-4 py-[9px] font-bold text-white">Đưa mã QR vào giữa khung hình</Text>
             </View>
             {scanned ? (
-              <View style={styles.rescan}>
+              <View className="absolute bottom-[30px] left-6 right-6">
                 <AppButton label="Quét lại" onPress={() => setScanned(false)} />
               </View>
             ) : null}
@@ -60,19 +59,3 @@ export function QrScannerModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#000000' },
-  header: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: colors.surface },
-  close: { color: colors.primary, fontSize: 14, fontWeight: '700' },
-  title: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  spacer: { width: 38 },
-  center: { flex: 1, padding: 28, alignItems: 'center', justifyContent: 'center', gap: 14, backgroundColor: colors.background },
-  permissionTitle: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  hint: { color: colors.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  cameraWrap: { flex: 1 },
-  overlay: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' },
-  scanFrame: { width: 250, height: 250, borderWidth: 3, borderColor: '#FFFFFF', borderRadius: ui.cardRadius, backgroundColor: 'transparent' },
-  scanHint: { marginTop: 22, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, overflow: 'hidden', color: '#FFFFFF', backgroundColor: 'rgba(0, 0, 0, 0.62)', fontWeight: '700' },
-  rescan: { position: 'absolute', left: 24, right: 24, bottom: 30 },
-});

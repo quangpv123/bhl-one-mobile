@@ -11,12 +11,12 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { z } from "zod";
 
 import { DateRangeFields } from "@/components/forms/date-range-fields";
 import { Screen } from "@/components/screen";
@@ -47,7 +47,7 @@ import {
   getApiErrorMessage,
   hasProtectedApiSession,
 } from "@/services/api";
-import { colors, ui } from "@/theme/colors";
+import { colors } from "@/theme/colors";
 import type { ApiResponse, Pagination } from "@/types/api";
 import type {
   PurchaseWarehouseOverview,
@@ -66,6 +66,10 @@ import {
   todayIso,
 } from "@/utils/format";
 import { shareProtectedApiFile } from "@/utils/protected-file";
+import { decimalStringSchema, firstZodError, isoDateSchema } from "@/lib/validation";
+
+const reasonSchema = z.string().trim().min(3, "Lý do phải có ít nhất 3 ký tự.");
+const paymentAmountSchema = decimalStringSchema({ minimum: 0.000001, message: "Số tiền phải lớn hơn 0." });
 
 interface PurchasePayment {
   id: string;
@@ -85,7 +89,6 @@ interface PurchasePayment {
     fileSize: number;
   }[];
 }
-
 interface PurchasePaymentsResponse {
   success: boolean;
   summary: {
@@ -98,7 +101,6 @@ interface PurchasePaymentsResponse {
   data: PurchasePayment[];
   pagination: Pagination;
 }
-
 function WarehouseOverviewCard({
   warehouse,
   compact = false,
@@ -124,47 +126,47 @@ function WarehouseOverviewCard({
           },
         })
       }
-      style={({ pressed }) => (pressed && canOpen ? styles.pressed : undefined)}
+      style={({ pressed }) => ({ opacity: pressed && canOpen ? 0.72 : 1 })}
     >
       <Card>
-        <View style={styles.heading}>
-          <View style={styles.titleWrap}>
-            <Text style={styles.title}>{warehouse.warehouseName}</Text>
-            <Text style={styles.code}>{warehouse.warehouseCode}</Text>
+        <View className="flex-row items-start justify-between gap-2.5">
+          <View className="flex-1">
+            <Text className="text-base font-bold leading-[22px] text-content">{warehouse.warehouseName}</Text>
+            <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{warehouse.warehouseCode}</Text>
           </View>
           <StatusBadge
             label={warehouse.status === "ACTIVE" ? "Hoạt động" : "Tạm dừng"}
             tone={warehouse.status === "ACTIVE" ? "success" : "neutral"}
           />
         </View>
-        <View style={styles.metricGrid}>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>Tồn kho</Text>
-            <Text style={styles.metricValue}>
+        <View className="mt-3.5 flex-row flex-wrap gap-2">
+          <View className="w-[48.7%] rounded-compact bg-surface-subtle p-2.5">
+            <Text className="text-caption font-semibold text-content-muted">Tồn kho</Text>
+            <Text className="mt-[5px] text-sm font-bold text-content">
               {formatWeight(warehouse.inventory)}
             </Text>
           </View>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>Nhập hôm nay</Text>
-            <Text style={[styles.metricValue, styles.importValue]}>
+          <View className="w-[48.7%] rounded-compact bg-surface-subtle p-2.5">
+            <Text className="text-caption font-semibold text-content-muted">Nhập hôm nay</Text>
+            <Text className="mt-[5px] text-sm font-bold text-success">
               {formatWeight(warehouse.currentDayImport)}
             </Text>
           </View>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>Tổng nhập</Text>
-            <Text style={styles.metricValue}>
+          <View className="w-[48.7%] rounded-compact bg-surface-subtle p-2.5">
+            <Text className="text-caption font-semibold text-content-muted">Tổng nhập</Text>
+            <Text className="mt-[5px] text-sm font-bold text-content">
               {formatWeight(warehouse.totalImport)}
             </Text>
           </View>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>Tổng xuất</Text>
-            <Text style={styles.metricValue}>
+          <View className="w-[48.7%] rounded-compact bg-surface-subtle p-2.5">
+            <Text className="text-caption font-semibold text-content-muted">Tổng xuất</Text>
+            <Text className="mt-[5px] text-sm font-bold text-content">
               {formatWeight(warehouse.totalExport)}
             </Text>
           </View>
         </View>
         {!compact ? (
-          <View style={styles.rows}>
+          <View className="mt-2.5">
             <InfoRow
               label="Tổng tiền hàng"
               value={formatMoney(warehouse.totalPurchaseAmount)}
@@ -187,13 +189,12 @@ function WarehouseOverviewCard({
           </View>
         ) : null}
         {canOpen ? (
-          <Text style={styles.openHint}>Chạm để xem phiếu cân →</Text>
+          <Text className="mt-3 text-right text-xs font-bold text-primary">Chạm để xem phiếu cân →</Text>
         ) : null}
       </Card>
     </Pressable>
   );
 }
-
 function WarehouseMonitoringList({
   warehouses,
   refreshing,
@@ -216,26 +217,26 @@ function WarehouseMonitoringList({
   );
 
   return (
-    <Card style={styles.monitoringTable}>
-      <View style={styles.monitoringHeader}>
+    <Card padded={false} className="-mx-page-x min-h-0 flex-1 overflow-hidden">
+      <View className="min-h-[38px] flex-row items-center gap-2 bg-surface-muted px-2.5 py-[7px]">
         <Text
-          style={[styles.monitoringHeaderText, styles.monitoringNameColumn]}
+          className="min-w-0 flex-[1.3] text-caption font-semibold uppercase text-content-muted"
         >
           Tên trạm
         </Text>
         <Text
-          style={[styles.monitoringHeaderText, styles.monitoringMetricColumn]}
+          className="min-w-0 flex-1 text-right text-caption font-semibold uppercase text-content-muted"
         >
           Nhập hôm nay
         </Text>
         <Text
-          style={[styles.monitoringHeaderText, styles.monitoringMetricColumn]}
+          className="min-w-0 flex-1 text-right text-caption font-semibold uppercase text-content-muted"
         >
           Lũy kế nhập
         </Text>
       </View>
       <ScrollView
-        style={styles.monitoringBody}
+        className="min-h-0 flex-1"
         refreshControl={
           <RefreshControl
             colors={[colors.primary]}
@@ -261,15 +262,12 @@ function WarehouseMonitoringList({
                 },
               })
             }
-            style={({ pressed }) => [
-              styles.monitoringRow,
-              index < warehouses.length - 1 && styles.monitoringRowBorder,
-              pressed && canOpen && styles.monitoringRowPressed,
-            ]}
+            className={`min-h-[52px] flex-row items-center gap-2 bg-surface px-2.5 py-2.5 ${index < warehouses.length - 1 ? 'border-b border-border' : ''}`}
+            style={({ pressed }) => ({ backgroundColor: pressed && canOpen ? colors.primarySoft : colors.surface })}
           >
             <Text
               numberOfLines={2}
-              style={[styles.monitoringName, styles.monitoringNameColumn]}
+              className="min-w-0 flex-[1.3] text-body font-semibold text-content"
             >
               {warehouse.warehouseName}
             </Text>
@@ -278,9 +276,9 @@ function WarehouseMonitoringList({
           </Pressable>
         ))}
       </ScrollView>
-      <View style={styles.monitoringTotalRow}>
+      <View className="min-h-12 flex-row items-center gap-2 border-t border-border bg-surface-muted px-2.5 py-[9px]">
         <Text
-          style={[styles.monitoringTotalLabel, styles.monitoringNameColumn]}
+          className="min-w-0 flex-[1.3] text-body font-semibold uppercase text-content"
         >
           Tổng
         </Text>
@@ -301,13 +299,9 @@ function MonitoringWeight({
   return (
     <Text
       numberOfLines={1}
-      style={[
-        styles.monitoringValue,
-        styles.monitoringMetricColumn,
-        total && styles.monitoringTotalValue,
-      ]}
+      className={`min-w-0 flex-1 text-right text-xs font-bold ${total ? 'text-primary-dark' : 'text-content-secondary'}`}
     >
-      {formatNumber(value, 3)} <Text style={styles.monitoringUnit}>kg</Text>
+      {formatNumber(value, 3)} <Text className="font-semibold text-content-placeholder">kg</Text>
     </Text>
   );
 }
@@ -323,15 +317,11 @@ export function PurchaseOverviewScreen({
   const [maximumReportDate] = useState(todayIso);
   const [reportFromDate, setReportFromDate] = useState(firstDayOfJuneIso);
   const [reportToDate, setReportToDate] = useState(todayIso);
-  const reportDateError =
-    !/^\d{4}-\d{2}-\d{2}$/.test(reportFromDate) ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(reportToDate)
-      ? "Chọn đầy đủ ngày bắt đầu và ngày kết thúc."
-      : reportFromDate > reportToDate
-        ? "Ngày bắt đầu không được lớn hơn ngày kết thúc."
-        : reportToDate > maximumReportDate
-          ? "Ngày kết thúc không được lớn hơn ngày hiện tại."
-          : undefined;
+  const reportDateValidation = z.object({ from: isoDateSchema, to: isoDateSchema })
+    .refine(value => value.from <= value.to, { path: ["to"], message: "Ngày bắt đầu không được lớn hơn ngày kết thúc." })
+    .refine(value => value.to <= maximumReportDate, { path: ["to"], message: "Ngày kết thúc không được lớn hơn ngày hiện tại." })
+    .safeParse({ from: reportFromDate, to: reportToDate });
+  const reportDateError = firstZodError(reportDateValidation) ?? undefined;
   const query = useQuery({
     queryKey: ["purchase-overview-mobile"],
     queryFn: async () =>
@@ -485,9 +475,9 @@ export function PurchaseOverviewScreen({
           if (!exporting) setReportDialogOpen(false);
         }}
       >
-        <View style={styles.dialogBackdrop}>
-          <View style={[styles.dialog, styles.reportDialog]}>
-            <Text style={styles.modalTitle}>Xuất báo cáo nhập</Text>
+        <View className="flex-1 justify-center bg-[rgba(15,23,42,0.48)] p-4">
+          <View className="w-full max-w-[480px] self-center gap-3 rounded-card bg-surface p-4">
+            <Text className="text-base font-bold text-content">Xuất báo cáo nhập</Text>
             <DateRangeFields
               fromDate={reportFromDate}
               toDate={reportToDate}
@@ -495,8 +485,8 @@ export function PurchaseOverviewScreen({
               onFromDateChange={setReportFromDate}
               onToDateChange={setReportToDate}
             />
-            <View style={styles.dialogActions}>
-              <View style={styles.dialogAction}>
+            <View className="mt-[3px] flex-row gap-[9px]">
+              <View className="flex-1">
                 <AppButton
                   tone="secondary"
                   label="Hủy"
@@ -504,7 +494,7 @@ export function PurchaseOverviewScreen({
                   onPress={() => setReportDialogOpen(false)}
                 />
               </View>
-              <View style={styles.dialogAction}>
+              <View className="flex-1">
                 <AppButton
                   tone="success"
                   icon="download"
@@ -774,7 +764,7 @@ export function PurchaseWarehouseDetailScreen({
   const activeQuery = tab === "tickets" ? tickets : payments;
   const ticketPaginationFooter =
     tab === "tickets" && tickets.data?.data.length ? (
-      <View style={styles.ticketPagination}>
+      <View className="min-h-[54px] flex-row items-center justify-between gap-2 border-t border-border bg-surface px-2.5">
         <AppButton
           compact
           tone="secondary"
@@ -784,11 +774,11 @@ export function PurchaseWarehouseDetailScreen({
             setTicketPage(Math.max(1, tickets.data.pagination.page - 1))
           }
         />
-        <View style={styles.ticketPaginationInfo}>
-          <Text style={styles.ticketPaginationPage}>
+        <View className="min-w-0 flex-1 items-center">
+          <Text className="text-caption font-bold leading-[15px] text-content">
             {`Trang ${tickets.data.pagination.page}/${Math.max(1, tickets.data.pagination.totalPages)}`}
           </Text>
-          <Text style={styles.ticketPaginationTotal}>
+          <Text className="mt-px text-caption font-medium text-content-muted">
             {formatNumber(tickets.data.pagination.total, 0)} phiếu
           </Text>
         </View>
@@ -813,14 +803,9 @@ export function PurchaseWarehouseDetailScreen({
         onRefresh={() => void activeQuery.refetch()}
         scrollEnabled={tab === "payments"}
       >
-        <View
-          style={[
-            styles.detailToolbar,
-            tab === "payments" && styles.detailToolbarPayments,
-          ]}
-        >
+        <View className={`w-full flex-row items-center gap-[7px] ${tab === "payments" ? 'justify-end' : ''}`}>
           {tab === "tickets" ? (
-            <View style={styles.detailSearch}>
+            <View className="h-[34px] min-w-0 flex-1">
               <SearchField
                 clearButtonMode="while-editing"
                 placeholder="Tìm..."
@@ -873,21 +858,15 @@ export function PurchaseWarehouseDetailScreen({
         </View>
 
         {can(permissions.purchasePaymentsView) ? (
-          <View accessibilityRole="tablist" style={styles.detailTabs}>
+          <View accessibilityRole="tablist" className="min-h-10 flex-row items-end border-b border-border">
             <Pressable
               accessibilityRole="tab"
               accessibilityState={{ selected: tab === "tickets" }}
               onPress={() => setTab("tickets")}
-              style={[
-                styles.detailTab,
-                tab === "tickets" && styles.detailTabActive,
-              ]}
+              className={`min-h-10 items-center justify-center border-b-2 px-[13px] ${tab === "tickets" ? 'border-primary' : 'border-transparent'}`}
             >
               <Text
-                style={[
-                  styles.detailTabLabel,
-                  tab === "tickets" && styles.detailTabLabelActive,
-                ]}
+                className={`text-body leading-[18px] ${tab === "tickets" ? 'font-bold text-primary-dark' : 'font-semibold text-content-muted'}`}
               >
                 Phiếu cân
               </Text>
@@ -896,16 +875,10 @@ export function PurchaseWarehouseDetailScreen({
               accessibilityRole="tab"
               accessibilityState={{ selected: tab === "payments" }}
               onPress={() => setTab("payments")}
-              style={[
-                styles.detailTab,
-                tab === "payments" && styles.detailTabActive,
-              ]}
+              className={`min-h-10 items-center justify-center border-b-2 px-[13px] ${tab === "payments" ? 'border-primary' : 'border-transparent'}`}
             >
               <Text
-                style={[
-                  styles.detailTabLabel,
-                  tab === "payments" && styles.detailTabLabelActive,
-                ]}
+                className={`text-body leading-[18px] ${tab === "payments" ? 'font-bold text-primary-dark' : 'font-semibold text-content-muted'}`}
               >
                 Thanh toán
               </Text>
@@ -922,26 +895,26 @@ export function PurchaseWarehouseDetailScreen({
         ) : null}
 
         {tab === "tickets" && tickets.data ? (
-          <View style={styles.ticketList}>
-            <Card tone="soft" style={styles.ticketSummary}>
-              <View style={styles.summaryMetrics}>
-                <View style={[styles.ticketMetric, styles.ticketMetricDivider]}>
-                  <Text style={styles.ticketMetricLabel}>
+          <View className="-mx-page-x min-h-0 flex-1">
+            <Card tone="soft" className="border-b-[6px] border-b-surface-muted px-3 py-2">
+              <View className="flex-row">
+                <View className="min-w-0 flex-1 border-r border-border-subtle py-[7px] pr-3">
+                  <Text className="text-caption font-semibold leading-[15px] text-content-muted">
                     Tổng khối lượng nhập
                   </Text>
                   <FormattedValue
                     numberOfLines={1}
-                    style={styles.ticketMetricValue}
+                    className="mt-0.5 text-base font-bold leading-[21px] text-primary-dark"
                     value={formatWeight(
                       tickets.data.summary.totalImportNetWeight,
                     )}
                   />
                 </View>
-                <View style={[styles.ticketMetric, styles.ticketMetricLast]}>
-                  <Text style={styles.ticketMetricLabel}>Tổng tiền</Text>
+                <View className="min-w-0 flex-1 py-[7px] pl-3">
+                  <Text className="text-caption font-semibold leading-[15px] text-content-muted">Tổng tiền</Text>
                   <FormattedValue
                     numberOfLines={1}
-                    style={styles.ticketMetricValue}
+                    className="mt-0.5 text-base font-bold leading-[21px] text-primary-dark"
                     value={formatMoney(tickets.data.summary.totalAmount)}
                   />
                 </View>
@@ -957,38 +930,27 @@ export function PurchaseWarehouseDetailScreen({
               />
             ) : (
               <>
-                <View style={styles.ticketTableHeader}>
+                <View className="min-h-[34px] flex-row items-center gap-[5px] border-b border-border bg-surface-muted px-2.5">
                   <Text
-                    style={[
-                      styles.ticketTableHeaderText,
-                      styles.ticketTableInfoColumn,
-                    ]}
+                    className="min-w-0 flex-[1.45] pr-[3px] text-caption font-semibold uppercase text-content-muted"
                   >
                     Phiếu / thời gian
                   </Text>
                   <Text
-                    style={[
-                      styles.ticketTableHeaderText,
-                      styles.ticketTableMetricHeader,
-                      styles.ticketTableMetricColumn,
-                    ]}
+                    className="min-w-0 flex-[0.72] text-right text-caption font-semibold uppercase text-content-muted"
                   >
                     KL sạch (kg)
                   </Text>
                   <Text
-                    style={[
-                      styles.ticketTableHeaderText,
-                      styles.ticketTableMetricHeader,
-                      styles.ticketTableMetricColumn,
-                    ]}
+                    className="min-w-0 flex-[0.72] text-right text-caption font-semibold uppercase text-content-muted"
                   >
                     Đơn giá (đ/kg)
                   </Text>
-                  <View style={styles.ticketTableActionColumn} />
+                  <View className="w-[34px] flex-row items-center justify-center" />
                 </View>
                 <ScrollView
                   keyboardShouldPersistTaps="handled"
-                  style={styles.ticketRowsScroll}
+                  className="min-h-0 flex-1"
                   refreshControl={
                     <RefreshControl
                       colors={[colors.primary]}
@@ -1010,40 +972,28 @@ export function PurchaseWarehouseDetailScreen({
                     return (
                       <View
                         key={ticket.id}
-                        style={[
-                          styles.ticketTableRow,
-                          ticket.status === "VOID" && styles.ticketTableRowVoid,
-                        ]}
+                        className={`min-h-16 flex-row items-center gap-[5px] border-b border-border-subtle px-2.5 py-2 ${ticket.status === "VOID" ? 'bg-danger-soft' : 'bg-surface'}`}
                       >
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={`Xem chi tiết phiếu ${ticket.ticketNumber}`}
                           onPress={() => setViewingTicket(ticket)}
-                          style={({ pressed }) => [
-                            styles.ticketTableRowContent,
-                            pressed && styles.pressed,
-                          ]}
+                          className="min-w-0 flex-1 flex-row items-center gap-[5px] self-stretch"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
                         >
-                          <View style={styles.ticketTableInfoColumn}>
+                          <View className="min-w-0 flex-[1.45] pr-[3px]">
                             <Text
                               numberOfLines={1}
-                              style={styles.ticketTableTicket}
+                              className="text-body font-bold leading-[18px] text-content"
                             >
                               #{ticket.ticketNumber} · {ticket.licensePlate}
                             </Text>
                             <Text
                               numberOfLines={1}
-                              style={styles.ticketTableMeta}
+                              className="mt-0.5 min-w-0 text-xs text-content-muted"
                             >
                               <Text
-                                style={[
-                                  styles.ticketTableStatus,
-                                  ticket.status === "VOID"
-                                    ? styles.ticketTableStatusVoid
-                                    : ticket.ticketType === "IMPORT"
-                                      ? styles.ticketTableStatusImport
-                                      : styles.ticketTableStatusExport,
-                                ]}
+                                className={`text-xs font-bold ${ticket.status === "VOID" ? 'text-danger' : ticket.ticketType === "IMPORT" ? 'text-success' : 'text-warning'}`}
                               >
                                 {statusLabel}
                               </Text>
@@ -1054,7 +1004,7 @@ export function PurchaseWarehouseDetailScreen({
                             {ticket.voidReason ? (
                               <Text
                                 numberOfLines={1}
-                                style={styles.ticketTableVoidReason}
+                                className="mt-0.5 text-caption text-danger"
                               >
                                 {ticket.voidReason}
                               </Text>
@@ -1062,22 +1012,12 @@ export function PurchaseWarehouseDetailScreen({
                           </View>
                           <FormattedValue
                             numberOfLines={1}
-                            style={[
-                              styles.ticketTableValue,
-                              styles.ticketTableMetricColumn,
-                              ticket.ticketType === "EXPORT" &&
-                                styles.ticketTableValueExport,
-                            ]}
+                            className={`min-w-0 flex-[0.72] text-right text-body font-bold ${ticket.ticketType === "EXPORT" ? 'text-warning' : 'text-primary-dark'}`}
                             value={formatNumber(ticket.netWeight, 3)}
                           />
                           <FormattedValue
                             numberOfLines={1}
-                            style={[
-                              styles.ticketTableValue,
-                              styles.ticketTableMetricColumn,
-                              ticket.ticketType === "EXPORT" &&
-                                styles.ticketTableValueExport,
-                            ]}
+                            className={`min-w-0 flex-[0.72] text-right text-body font-bold ${ticket.ticketType === "EXPORT" ? 'text-warning' : 'text-primary-dark'}`}
                             value={
                               ticket.price == null
                                 ? "—"
@@ -1085,7 +1025,7 @@ export function PurchaseWarehouseDetailScreen({
                             }
                           />
                         </Pressable>
-                        <View style={styles.ticketTableActionColumn}>
+                        <View className="w-[34px] flex-row items-center justify-center">
                           <ActionMenu
                             label={`Thao tác phiếu #${ticket.ticketNumber}`}
                             items={[
@@ -1149,7 +1089,7 @@ export function PurchaseWarehouseDetailScreen({
         {tab === "payments" && payments.data ? (
           <>
             <Card tone="soft">
-              <Text style={styles.summaryTitle}>Đối chiếu thanh toán</Text>
+              <Text className="mb-2 text-base font-bold text-content">Đối chiếu thanh toán</Text>
               <InfoRow
                 label="Tiền hàng"
                 value={formatMoney(payments.data.summary.totalPurchaseAmount)}
@@ -1176,14 +1116,14 @@ export function PurchaseWarehouseDetailScreen({
                 key={payment.id}
                 tone={payment.status === "VOID" ? "danger" : "default"}
               >
-                <View style={styles.heading}>
-                  <View style={styles.titleWrap}>
-                    <Text style={styles.ticketNumber}>
+                <View className="flex-row items-start justify-between gap-2.5">
+                  <View className="flex-1">
+                    <Text className="text-[15px] font-bold leading-5 text-content">
                       {payment.transactionType === "PAYMENT"
                         ? "Thanh toán"
                         : "Hoàn tiền"}
                     </Text>
-                    <Text style={styles.ticketMeta}>
+                    <Text className="mt-0.5 text-caption font-medium leading-4 text-content-muted">
                       {formatDateTime(payment.paidAt)}
                     </Text>
                   </View>
@@ -1194,7 +1134,7 @@ export function PurchaseWarehouseDetailScreen({
                     tone={payment.status === "CONFIRMED" ? "success" : "danger"}
                   />
                 </View>
-                <Text style={styles.paymentAmount}>
+                <Text className="my-3 text-[22px] font-bold text-primary-dark">
                   {formatMoney(payment.amount)}
                 </Text>
                 <InfoRow
@@ -1212,13 +1152,13 @@ export function PurchaseWarehouseDetailScreen({
                   <InfoRow label="Tham chiếu" value={payment.referenceNumber} />
                 ) : null}
                 {payment.attachments?.length ? (
-                  <View style={styles.attachmentBlock}>
-                    <Text style={styles.attachmentTitle}>
+                  <View className="mt-2.5 gap-1">
+                    <Text className="text-xs font-bold text-content">
                       Chứng từ ({payment.attachments.length})
                     </Text>
                     {payment.attachments.map((attachment) => (
-                      <View key={attachment.id} style={styles.attachmentRow}>
-                        <Text numberOfLines={1} style={styles.attachmentName}>
+                      <View key={attachment.id} className="flex-row items-center gap-[7px]">
+                        <Text numberOfLines={1} className="flex-1 text-xs text-primary-dark">
                           • {attachment.fileName}
                         </Text>
                         <AppButton
@@ -1237,16 +1177,16 @@ export function PurchaseWarehouseDetailScreen({
                   </View>
                 ) : null}
                 {payment.note ? (
-                  <Text style={styles.description}>{payment.note}</Text>
+                  <Text className="mt-2 text-body leading-[19px] text-content-muted">{payment.note}</Text>
                 ) : null}
                 {payment.voidReason ? (
-                  <Text style={styles.voidReason}>
+                  <Text className="mt-2.5 text-xs leading-[18px] text-danger">
                     Lý do hủy: {payment.voidReason}
                   </Text>
                 ) : null}
                 {payment.status === "CONFIRMED" &&
                 can(permissions.purchasePaymentsDelete) ? (
-                  <View style={styles.actions}>
+                  <View className="mt-1 flex-row flex-wrap items-center justify-end gap-0.5">
                     <AppButton
                       compact
                       tone="danger-outline"
@@ -1361,12 +1301,12 @@ function ReasonModal({
 }) {
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const submit = async () => {
-    const nextReason = value.trim();
-    if (nextReason.length < 3) {
-      Alert.alert("Thiếu lý do", "Lý do phải có ít nhất 3 ký tự.");
-      return;
-    }
+    setValidationAttempted(true);
+    const validation = reasonSchema.safeParse(value);
+    if (!validation.success) return;
+    const nextReason = validation.data;
     setSubmitting(true);
     try {
       await onSubmit(nextReason);
@@ -1379,23 +1319,24 @@ function ReasonModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.dialogBackdrop}
+        className="flex-1 justify-center bg-[rgba(15,23,42,0.48)] p-4"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.dialog}>
-          <Text style={styles.modalTitle}>{title}</Text>
+        <View className="gap-3 rounded-card bg-surface p-4">
+          <Text className="text-base font-bold text-content">{title}</Text>
           <FormInput
             label={label}
             value={value}
             onChangeText={setValue}
+            error={validationAttempted ? firstZodError(reasonSchema.safeParse(value)) : undefined}
             multiline
             autoFocus
           />
-          <View style={styles.dialogActions}>
-            <View style={{ flex: 1 }}>
+          <View className="mt-[3px] flex-row gap-[9px]">
+            <View className="flex-1">
               <AppButton tone="secondary" label="Đóng" onPress={onClose} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View className="flex-1">
               <AppButton
                 tone="danger"
                 label="Xác nhận"
@@ -1430,12 +1371,12 @@ function CreatePaymentModal({
   const [note, setNote] = useState("");
   const [attachments, setAttachments] = useState<ImagePickerAsset[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const submit = async () => {
-    const numericAmount = Number(amount.replace(",", "."));
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      Alert.alert("Số tiền chưa hợp lệ", "Nhập số tiền lớn hơn 0.");
-      return;
-    }
+    setValidationAttempted(true);
+    const validation = paymentAmountSchema.safeParse(amount);
+    if (!validation.success) return;
+    const numericAmount = Number(validation.data.replace(",", "."));
     setSubmitting(true);
     try {
       const formData = new FormData();
@@ -1468,25 +1409,25 @@ function CreatePaymentModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.modalSafeArea}>
+      <SafeAreaView className="flex-1 bg-background">
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
+          className="flex-1"
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={styles.modalHeader}>
+          <View className="min-h-header flex-row items-center justify-between border-b border-border bg-surface px-3">
             <Pressable onPress={onClose}>
-              <Text style={styles.cancel}>Hủy</Text>
+              <Text className="text-sm font-semibold text-content-muted">Hủy</Text>
             </Pressable>
-            <Text style={styles.modalTitle}>Ghi nhận thanh toán</Text>
+            <Text className="text-base font-bold text-content">Ghi nhận thanh toán</Text>
             <Pressable onPress={() => void submit()}>
-              <Text style={styles.save}>Lưu</Text>
+              <Text className="text-sm font-semibold text-primary">Lưu</Text>
             </Pressable>
           </View>
           <ScrollView
-            contentContainerStyle={styles.form}
+            contentContainerClassName="gap-3 p-3"
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.formLabel}>Loại giao dịch</Text>
+            <Text className="text-body font-semibold text-content">Loại giao dịch</Text>
             <ChoiceChips
               value={transactionType}
               options={[
@@ -1499,9 +1440,10 @@ function CreatePaymentModal({
               label="Số tiền (đ)"
               value={amount}
               onChangeText={setAmount}
+              error={validationAttempted ? firstZodError(paymentAmountSchema.safeParse(amount)) : undefined}
               keyboardType="decimal-pad"
             />
-            <Text style={styles.formLabel}>Hình thức</Text>
+            <Text className="text-body font-semibold text-content">Hình thức</Text>
             <ChoiceChips
               value={paymentMethod}
               options={[
@@ -1543,420 +1485,19 @@ function CreatePaymentModal({
 
 function FormInput({
   label,
+  error,
   ...props
-}: React.ComponentProps<typeof TextInput> & { label: string }) {
+}: React.ComponentProps<typeof TextInput> & { label: string; error?: string | null }) {
   return (
-    <View style={{ gap: 7 }}>
-      <Text style={styles.formLabel}>{label}</Text>
+    <View className="gap-[7px]">
+      <Text className="text-body font-semibold text-content">{label}</Text>
       <TextInput
         {...props}
         placeholderTextColor={colors.textPlaceholder}
-        style={[styles.input, props.multiline && styles.textArea]}
+        className={`${props.multiline ? 'h-[92px] py-[9px]' : 'h-control py-0'} rounded-control border px-3 text-content ${error ? 'border-danger bg-danger-soft' : 'border-border bg-surface'}`}
+        style={{ textAlignVertical: props.multiline ? 'top' : 'center', includeFontPadding: false }}
       />
+      {error ? <Text className="text-caption font-medium leading-[15px] text-danger">{error}</Text> : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  detailToolbar: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  detailToolbarPayments: { justifyContent: "flex-end" },
-  detailSearch: {
-    flex: 1,
-    minWidth: 0,
-    height: ui.compactControlHeight,
-  },
-  reportRangeHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
-  reportRangeError: {
-    color: colors.danger,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "700",
-  },
-  reportDialog: { width: "100%", maxWidth: 480, alignSelf: "center" },
-  reportDialogDescription: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  pressed: { opacity: 0.72 },
-  monitoringTable: { flex: 1, minHeight: 0, padding: 0, overflow: "hidden" },
-  monitoringHeader: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.surfaceMuted,
-  },
-  monitoringHeaderText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  monitoringNameColumn: { flex: 1.3, minWidth: 0 },
-  monitoringMetricColumn: { flex: 1, minWidth: 0, textAlign: "right" },
-  monitoringBody: { flex: 1, minHeight: 0 },
-  monitoringRow: {
-    minHeight: 52,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.surface,
-  },
-  monitoringRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  monitoringRowPressed: { backgroundColor: colors.primarySoft },
-  monitoringName: {
-    color: colors.text,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "700",
-  },
-  monitoringValue: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  monitoringUnit: { color: colors.textPlaceholder, fontWeight: "600" },
-  monitoringTotalRow: {
-    minHeight: 48,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  monitoringTotalLabel: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  monitoringTotalValue: { color: colors.primaryDark, fontWeight: "700" },
-  detailTabs: {
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  detailTab: {
-    minHeight: 40,
-    paddingHorizontal: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  detailTabActive: { borderBottomColor: colors.primary },
-  detailTabLabel: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-  detailTabLabelActive: { color: colors.primaryDark, fontWeight: "700" },
-  ticketSummary: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 6,
-    borderBottomColor: colors.surfaceMuted,
-  },
-  ticketList: {
-    flex: 1,
-    minHeight: 0,
-    marginHorizontal: -ui.pagePaddingHorizontal,
-  },
-  ticketSummaryTitle: {
-    color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  ticketTableHeader: {
-    minHeight: 34,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  ticketTableHeaderText: {
-    color: colors.textMuted,
-    fontSize: 9,
-    lineHeight: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  ticketTableMetricHeader: { textAlign: "right" },
-  ticketRowsScroll: { flex: 1, minHeight: 0 },
-  ticketTableRow: {
-    minHeight: 64,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
-    backgroundColor: colors.surface,
-  },
-  ticketTableRowVoid: { backgroundColor: colors.dangerSoft },
-  ticketTableRowContent: {
-    flex: 1,
-    minWidth: 0,
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  ticketTableInfoColumn: { flex: 1.45, minWidth: 0, paddingRight: 3 },
-  ticketTableMetricColumn: { flex: 0.72, minWidth: 0 },
-  ticketTableActionColumn: {
-    width: 34,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ticketTableTicket: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "700",
-  },
-  ticketTableMeta: {
-    marginTop: 2,
-    minWidth: 0,
-    color: colors.textMuted,
-    fontSize: 9,
-    lineHeight: 13,
-    fontWeight: "500",
-  },
-  ticketTableStatus: {
-    fontSize: 9,
-    lineHeight: 13,
-    fontWeight: "700",
-  },
-  ticketTableStatusImport: { color: colors.success },
-  ticketTableStatusExport: { color: colors.warning },
-  ticketTableStatusVoid: { color: colors.danger },
-  ticketTableVoidReason: {
-    marginTop: 2,
-    color: colors.danger,
-    fontSize: 9,
-    lineHeight: 12,
-  },
-  ticketTableValue: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "700",
-    textAlign: "right",
-  },
-  ticketTableValueExport: { color: colors.warning },
-  ticketPagination: {
-    minHeight: 54,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  ticketPaginationInfo: { flex: 1, minWidth: 0, alignItems: "center" },
-  ticketPaginationPage: {
-    color: colors.text,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: "700",
-  },
-  ticketPaginationTotal: {
-    marginTop: 1,
-    color: colors.textMuted,
-    fontSize: 9,
-    lineHeight: 12,
-    fontWeight: "500",
-  },
-  heading: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  titleWrap: { flex: 1 },
-  title: {
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: "700",
-  },
-  ticketNumber: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
-  },
-  ticketMeta: {
-    color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-  code: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
-  metricBox: {
-    width: "48.7%",
-    padding: 10,
-    borderRadius: ui.smallRadius,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  metricLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "600" },
-  metricValue: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 5,
-  },
-  importValue: { color: colors.success },
-  rows: { marginTop: 10 },
-  summaryMetrics: {
-    marginTop: 0,
-    flexDirection: "row",
-  },
-  ticketMetric: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 7,
-  },
-  ticketMetricDivider: {
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.borderSubtle,
-    paddingRight: 12,
-  },
-  ticketMetricLast: { paddingLeft: 12 },
-  ticketMetricLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: "600",
-  },
-  ticketMetricValue: {
-    color: colors.primaryDark,
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  openHint: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "right",
-    marginTop: 12,
-  },
-  summaryTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  voidReason: {
-    color: colors.danger,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 10,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 2,
-    marginTop: 4,
-  },
-  paymentAmount: {
-    color: colors.primaryDark,
-    fontSize: 22,
-    fontWeight: "700",
-    marginVertical: 12,
-  },
-  description: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 8,
-  },
-  attachmentBlock: { marginTop: 10, gap: 4 },
-  attachmentTitle: { color: colors.text, fontSize: 12, fontWeight: "700" },
-  attachmentRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  attachmentName: { flex: 1, color: colors.primaryDark, fontSize: 12 },
-  modalSafeArea: { flex: 1, backgroundColor: colors.background },
-  modalHeader: {
-    minHeight: ui.headerHeight,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  cancel: { color: colors.textMuted, fontSize: 14, fontWeight: "600" },
-  save: { color: colors.primary, fontSize: 14, fontWeight: "600" },
-  form: { padding: 12, gap: 12 },
-  formLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  input: {
-    minHeight: ui.controlHeight,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    color: colors.text,
-  },
-  textArea: { minHeight: 92, textAlignVertical: "top" },
-  dialogBackdrop: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.48)",
-  },
-  dialog: {
-    padding: 16,
-    borderRadius: ui.cardRadius,
-    backgroundColor: colors.surface,
-    gap: 12,
-  },
-  dialogActions: { flexDirection: "row", gap: 9, marginTop: 3 },
-  dialogAction: { flex: 1 },
-});

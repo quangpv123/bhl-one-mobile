@@ -4,7 +4,7 @@ import type { DirectMessage } from '@/types/models';
 import { apiBaseUrl, getProtectedApiHeaders, hasProtectedApiSession, usesBrowserSession } from './api';
 
 interface ServerToClientEvents {
-  'messaging:conversation-updated': (event: { conversationId: string }) => void;
+  'messaging:conversation-updated': (event: { conversationId: string; deleted?: boolean }) => void;
   'messaging:message-new': (message: DirectMessage) => void;
   'messaging:conversation-read': (event: { conversationId: string; readerUserId: string }) => void;
 }

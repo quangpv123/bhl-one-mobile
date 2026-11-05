@@ -1,5 +1,5 @@
-import Constants from 'expo-constants';
-import { useEffect, useState } from 'react';
+import Constants from "expo-constants";
+import { useEffect, useState } from "react";
 import {
   Alert,
   AppState,
@@ -9,34 +9,54 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { z } from "zod";
 
-import { PasswordInput } from '@/components/forms/password-input';
-import { Screen } from '@/components/screen';
-import { AppButton, Card, InfoRow, StatusBadge } from '@/components/ui';
-import { useAuth } from '@/features/auth/auth-context';
-import { api, getApiErrorMessage } from '@/services/api';
+import { FormLabel } from "@/components/forms/management-form";
+import { PasswordInput } from "@/components/forms/password-input";
+import { Screen } from "@/components/screen";
+import { AppButton, Card, InfoRow, StatusBadge } from "@/components/ui";
+import { useAuth } from "@/features/auth/auth-context";
+import {
+  passwordSchema,
+  requiredTextSchema,
+  zodErrorMap,
+} from "@/lib/validation";
+import { api, getApiErrorMessage } from "@/services/api";
 import {
   disablePushNotifications,
   enablePushNotifications,
   getPushNotificationState,
   type PushNotificationState,
-} from '@/services/notifications';
-import { colors, ui } from '@/theme/colors';
-import { formatDateTime } from '@/utils/format';
+} from "@/services/notifications";
+import { colors } from "@/theme/colors";
+import { formatDateTime } from "@/utils/format";
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: requiredTextSchema,
+    newPassword: passwordSchema,
+    confirmPassword: requiredTextSchema,
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Hai lần nhập mật khẩu mới chưa giống nhau.",
+  });
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [pushState, setPushState] = useState<PushNotificationState>('unavailable');
+  const [passwordValidationAttempted, setPasswordValidationAttempted] =
+    useState(false);
+  const [pushState, setPushState] =
+    useState<PushNotificationState>("unavailable");
   const [pushLoading, setPushLoading] = useState(true);
 
   useEffect(() => {
@@ -46,158 +66,279 @@ export default function ProfileScreen() {
         .finally(() => setPushLoading(false));
     };
     refreshPushState();
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') refreshPushState();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshPushState();
     });
     return () => subscription.remove();
   }, []);
 
   const confirmLogout = () => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất khỏi BHL One?', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Đăng xuất', style: 'destructive', onPress: () => void logout() },
+    Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất khỏi BHL One?", [
+      { text: "Hủy", style: "cancel" },
+      { text: "Đăng xuất", style: "destructive", onPress: () => void logout() },
     ]);
   };
 
   const closePasswordModal = () => {
     if (saving) return;
     setChangePasswordOpen(false);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordValidationAttempted(false);
   };
 
   const updatePushNotifications = async () => {
-    if (pushState === 'unavailable') return;
-    if (pushState === 'denied') {
+    if (pushState === "unavailable") return;
+    if (pushState === "denied") {
       await Linking.openSettings();
       return;
     }
 
     setPushLoading(true);
     try {
-      if (pushState === 'enabled') {
+      if (pushState === "enabled") {
         await disablePushNotifications();
-        setPushState('disabled');
+        setPushState("disabled");
         return;
       }
       const nextState = await enablePushNotifications();
       setPushState(nextState);
-      if (nextState !== 'enabled') {
-        Alert.alert('Chưa bật thông báo', 'Vui lòng cho phép BHL One gửi thông báo trong cài đặt thiết bị.');
+      if (nextState !== "enabled") {
+        Alert.alert(
+          "Chưa bật thông báo",
+          "Vui lòng cho phép BHL One gửi thông báo trong cài đặt thiết bị.",
+        );
       }
     } catch (error) {
-      Alert.alert('Không thể cập nhật thông báo', getApiErrorMessage(error));
+      Alert.alert("Không thể cập nhật thông báo", getApiErrorMessage(error));
       setPushState(await getPushNotificationState().catch(() => pushState));
     } finally {
       setPushLoading(false);
     }
   };
 
-  const pushDescription = pushState === 'enabled'
-    ? 'Đang nhận tin nhắn mới và thông báo nghiệp vụ khi ứng dụng chạy nền hoặc đã đóng.'
-    : pushState === 'denied'
-      ? 'Quyền thông báo đang bị chặn. Mở cài đặt thiết bị để cấp lại quyền.'
-      : pushState === 'unavailable'
-        ? 'Push native cần bản development hoặc bản cài Android/iOS, không hoạt động trong Expo Go và trình duyệt.'
-        : 'Bật để nhận tin nhắn mới và thông báo nghiệp vụ ngay cả khi không mở ứng dụng.';
+  const pushDescription =
+    pushState === "enabled"
+      ? "Đang nhận tin nhắn mới và thông báo nghiệp vụ khi ứng dụng chạy nền hoặc đã đóng."
+      : pushState === "denied"
+        ? "Quyền thông báo đang bị chặn. Mở cài đặt thiết bị để cấp lại quyền."
+        : pushState === "unavailable"
+          ? "Push native cần bản development hoặc bản cài Android/iOS, không hoạt động trong Expo Go và trình duyệt."
+          : "Bật để nhận tin nhắn mới và thông báo nghiệp vụ ngay cả khi không mở ứng dụng.";
 
   const changePassword = async () => {
-    if (!currentPassword) {
-      Alert.alert('Thiếu mật khẩu', 'Nhập mật khẩu hiện tại.');
-      return;
-    }
-    if (newPassword.length < 8 || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      Alert.alert('Mật khẩu mới chưa hợp lệ', 'Mật khẩu cần ít nhất 8 ký tự, gồm chữ hoa, chữ thường và chữ số.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Mật khẩu không khớp', 'Hai lần nhập mật khẩu mới chưa giống nhau.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const response = await api.patch<{ success: boolean; message?: string }>('/users/me/password', {
+    setPasswordValidationAttempted(true);
+    if (
+      !changePasswordSchema.safeParse({
         currentPassword,
         newPassword,
-      });
-      Alert.alert('Đổi mật khẩu thành công', `${response.data.message || 'Mật khẩu đã được cập nhật'}. Vui lòng đăng nhập lại.`, [
-        { text: 'Đăng nhập lại', onPress: () => void logout() },
-      ]);
+        confirmPassword,
+      }).success
+    )
+      return;
+    setSaving(true);
+    try {
+      const response = await api.patch<{ success: boolean; message?: string }>(
+        "/users/me/password",
+        {
+          currentPassword,
+          newPassword,
+        },
+      );
+      Alert.alert(
+        "Đổi mật khẩu thành công",
+        `${response.data.message || "Mật khẩu đã được cập nhật"}. Vui lòng đăng nhập lại.`,
+        [{ text: "Đăng nhập lại", onPress: () => void logout() }],
+      );
     } catch (error) {
-      Alert.alert('Không thể đổi mật khẩu', getApiErrorMessage(error));
+      Alert.alert("Không thể đổi mật khẩu", getApiErrorMessage(error));
     } finally {
       setSaving(false);
     }
   };
 
-  const initials = (user?.fullName || 'BHL')
+  const initials = (user?.fullName || "BHL")
     .split(/\s+/)
     .slice(-2)
-    .map(part => part.charAt(0).toUpperCase())
-    .join('');
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+  const passwordValidation = changePasswordSchema.safeParse({
+    currentPassword,
+    newPassword,
+    confirmPassword,
+  });
+  const passwordErrors = passwordValidation.success
+    ? {}
+    : zodErrorMap(passwordValidation.error);
+  const currentPasswordError = passwordValidationAttempted
+    ? (passwordErrors.currentPassword ?? null)
+    : null;
+  const newPasswordError = passwordValidationAttempted
+    ? (passwordErrors.newPassword ?? null)
+    : null;
+  const confirmPasswordError = passwordValidationAttempted
+    ? (passwordErrors.confirmPassword ?? null)
+    : null;
 
   return (
     <>
-      <Screen title="Tài khoản" subtitle={`@${user?.username || ''}`}>
+      <Screen title="Tài khoản">
         <Card>
-          <View style={styles.identity}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View>
-            <View style={styles.identityText}>
-              <Text style={styles.name}>{user?.fullName}</Text>
-              <View style={styles.badges}>
-                <StatusBadge label={user?.role || '—'} tone="info" />
-                <StatusBadge label={user?.status === 'ACTIVE' ? 'Đang hoạt động' : 'Đã khóa'} tone={user?.status === 'ACTIVE' ? 'success' : 'danger'} />
+          <View className="flex-row items-center gap-3.5">
+            <View className="h-16 w-16 items-center justify-center rounded-2xl bg-primary-soft">
+              <Text className="text-[23px] font-bold text-primary-dark">
+                {initials}
+              </Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-xl font-bold text-content">
+                {user?.fullName}
+              </Text>
+              <View className="mt-2 flex-row flex-wrap gap-1.5">
+                <StatusBadge label={user?.role || "—"} tone="info" />
+                <StatusBadge
+                  label={
+                    user?.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa"
+                  }
+                  tone={user?.status === "ACTIVE" ? "success" : "danger"}
+                />
               </View>
             </View>
           </View>
-          <View style={styles.details}>
-            <InfoRow label="Số điện thoại" value={user?.phone || 'Chưa cập nhật'} />
-            <InfoRow label="Email" value={user?.email || 'Chưa cập nhật'} />
-            <InfoRow label="Đăng nhập gần nhất" value={formatDateTime(user?.lastLoginAt)} />
-            <InfoRow label="Số quyền được cấp" value={String(user?.permissions?.length ?? 0)} />
-          </View>
-        </Card>
-        <Card tone="soft">
-          <Text style={styles.securityTitle}>Bảo mật tài khoản</Text>
-          <Text style={styles.securityDescription}>Đổi mật khẩu định kỳ và không chia sẻ thông tin đăng nhập.</Text>
-          <AppButton tone="secondary" label="Đổi mật khẩu" onPress={() => setChangePasswordOpen(true)} />
-        </Card>
-        <Card tone="soft">
-          <View style={styles.notificationHeading}>
-            <Text style={styles.securityTitle}>Thông báo đẩy</Text>
-            <StatusBadge
-              label={pushState === 'enabled' ? 'Đang bật' : pushState === 'denied' ? 'Bị chặn' : 'Đang tắt'}
-              tone={pushState === 'enabled' ? 'success' : pushState === 'denied' ? 'danger' : 'neutral'}
+          <View className="mt-4 border-t border-border pt-2.5">
+            <InfoRow
+              label="Số điện thoại"
+              value={user?.phone || "Chưa cập nhật"}
+            />
+            <InfoRow label="Email" value={user?.email || "Chưa cập nhật"} />
+            <InfoRow
+              label="Đăng nhập gần nhất"
+              value={formatDateTime(user?.lastLoginAt)}
+            />
+            <InfoRow
+              label="Số quyền được cấp"
+              value={String(user?.permissions?.length ?? 0)}
             />
           </View>
-          <Text style={styles.securityDescription}>{pushDescription}</Text>
+        </Card>
+        <Card tone="soft">
+          <Text className="text-card font-bold text-content">
+            Bảo mật tài khoản
+          </Text>
+          <Text className="my-2 leading-5 text-content-muted">
+            Đổi mật khẩu định kỳ và không chia sẻ thông tin đăng nhập.
+          </Text>
           <AppButton
             tone="secondary"
-            label={pushState === 'enabled' ? 'Tắt thông báo' : pushState === 'denied' ? 'Mở cài đặt' : 'Bật thông báo'}
-            disabled={pushState === 'unavailable'}
+            label="Đổi mật khẩu"
+            onPress={() => {
+              setPasswordValidationAttempted(false);
+              setChangePasswordOpen(true);
+            }}
+          />
+        </Card>
+        <Card tone="soft">
+          <View className="flex-row items-center justify-between gap-2.5">
+            <Text className="text-card font-bold text-content">
+              Thông báo đẩy
+            </Text>
+            <StatusBadge
+              label={
+                pushState === "enabled"
+                  ? "Đang bật"
+                  : pushState === "denied"
+                    ? "Bị chặn"
+                    : "Đang tắt"
+              }
+              tone={
+                pushState === "enabled"
+                  ? "success"
+                  : pushState === "denied"
+                    ? "danger"
+                    : "neutral"
+              }
+            />
+          </View>
+          <Text className="my-2 leading-5 text-content-muted">
+            {pushDescription}
+          </Text>
+          <AppButton
+            tone="secondary"
+            label={
+              pushState === "enabled"
+                ? "Tắt thông báo"
+                : pushState === "denied"
+                  ? "Mở cài đặt"
+                  : "Bật thông báo"
+            }
+            disabled={pushState === "unavailable"}
             loading={pushLoading}
             onPress={() => void updatePushNotifications()}
           />
         </Card>
-        <Text style={styles.version}>BHL One phiên bản {Constants.expoConfig?.version || '1.0.0'}</Text>
-        <AppButton tone="danger-outline" label="Đăng xuất" onPress={confirmLogout} />
+        <Text className="mt-2 text-center text-xs text-content-muted">
+          BHL One phiên bản {Constants.expoConfig?.version || "1.0.0"}
+        </Text>
+        <AppButton
+          tone="danger-outline"
+          label="Đăng xuất"
+          onPress={confirmLogout}
+        />
       </Screen>
 
-      <Modal visible={changePasswordOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={closePasswordModal}>
-        <SafeAreaView style={styles.modalSafeArea}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.modalHeader}>
-              <Pressable onPress={closePasswordModal}><Text style={styles.cancel}>Hủy</Text></Pressable>
-              <Text style={styles.modalTitle}>Đổi mật khẩu</Text>
-              <Pressable disabled={saving} onPress={() => void changePassword()}><Text style={styles.save}>Lưu</Text></Pressable>
+      <Modal
+        visible={changePasswordOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closePasswordModal}
+      >
+        <SafeAreaView className="flex-1 bg-background">
+          <KeyboardAvoidingView
+            className="flex-1"
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <View className="min-h-header flex-row items-center justify-between border-b border-border bg-surface px-3">
+              <Pressable onPress={closePasswordModal}>
+                <Text className="text-sm font-semibold text-content-muted">
+                  Hủy
+                </Text>
+              </Pressable>
+              <Text className="text-card font-bold text-content">
+                Đổi mật khẩu
+              </Text>
+              <Pressable
+                disabled={saving}
+                onPress={() => void changePassword()}
+              >
+                <Text className="text-sm font-semibold text-primary">Lưu</Text>
+              </Pressable>
             </View>
-            <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-              <PasswordField label="Mật khẩu hiện tại" value={currentPassword} onChangeText={setCurrentPassword} />
-              <PasswordField label="Mật khẩu mới" value={newPassword} onChangeText={setNewPassword} />
-              <Text style={styles.hint}>Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.</Text>
-              <PasswordField label="Nhập lại mật khẩu mới" value={confirmPassword} onChangeText={setConfirmPassword} />
-              <AppButton label="Đổi mật khẩu" loading={saving} onPress={() => void changePassword()} />
+            <ScrollView
+              contentContainerClassName="gap-3 p-3"
+              keyboardShouldPersistTaps="handled"
+            >
+              <PasswordField
+                label="Mật khẩu hiện tại *"
+                value={currentPassword}
+                error={currentPasswordError}
+                onChangeText={setCurrentPassword}
+              />
+              <PasswordField
+                label="Mật khẩu mới *"
+                value={newPassword}
+                error={newPasswordError}
+                onChangeText={setNewPassword}
+              />
+              <Text className="mt-[-4px] text-xs leading-[18px] text-content-muted">
+                Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.
+              </Text>
+              <PasswordField
+                label="Nhập lại mật khẩu mới *"
+                value={confirmPassword}
+                error={confirmPasswordError}
+                onChangeText={setConfirmPassword}
+              />
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -206,37 +347,33 @@ export default function ProfileScreen() {
   );
 }
 
-function PasswordField({ label, value, onChangeText }: { label: string; value: string; onChangeText: (value: string) => void }) {
+function PasswordField({
+  label,
+  value,
+  error,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  error: string | null;
+  onChangeText: (value: string) => void;
+}) {
   return (
-    <View style={{ gap: 7 }}>
-      <Text style={styles.label}>{label}</Text>
+    <View className="gap-[7px]">
+      <FormLabel label={label} />
       <PasswordInput
         value={value}
         onChangeText={onChangeText}
         placeholder="••••••••"
+        containerStyle={
+          error
+            ? { borderColor: colors.danger, backgroundColor: colors.dangerSoft }
+            : undefined
+        }
       />
+      {error ? (
+        <Text className="text-caption font-medium text-danger">{error}</Text>
+      ) : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  avatar: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.primaryDark, fontSize: 23, fontWeight: '700' },
-  identityText: { flex: 1 },
-  name: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  details: { marginTop: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  securityTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  securityDescription: { color: colors.textMuted, lineHeight: 20, marginVertical: 8 },
-  notificationHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  version: { color: colors.textMuted, textAlign: 'center', fontSize: 12, marginTop: 8 },
-  modalSafeArea: { flex: 1, backgroundColor: colors.background },
-  modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  form: { padding: 12, gap: 12 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  hint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: -4 },
-});

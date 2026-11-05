@@ -144,6 +144,7 @@ export interface TransportVehicleStatus {
   operatingStatus: VehicleOperatingStatus;
   tripId: string | null;
   tripCode: string | null;
+  driverUserId: string | null;
   driverFullName: string | null;
   driverPhone: string | null;
   routeSnapshot: string | null;
@@ -233,6 +234,7 @@ export interface TransportTripEvent {
   expenseType: string | null;
   amount: number | null;
   resolvedAt: string | null;
+  resolvedByName?: string | null;
   occurredAt: string;
   images?: {
     id: string;

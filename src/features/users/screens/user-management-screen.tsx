@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
+import { z } from 'zod';
 
 import { Screen } from '@/components/screen';
 import {
@@ -16,10 +17,10 @@ import {
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { PaginatedResponse, RoleOption, UserRecord } from '@/types/business';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
+import { optionalEmailSchema, passwordSchema, requiredTextSchema } from '@/lib/validation';
 
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
@@ -41,24 +42,36 @@ const emptyDraft: UserDraft = {
   password: '',
 };
 
-function validatePassword(password: string) {
-  if (password.length < 8) return 'Mật khẩu phải có ít nhất 8 ký tự.';
-  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-    return 'Mật khẩu phải gồm chữ hoa, chữ thường và chữ số.';
-  }
-  return null;
-}
+const fullNameSchema = z.string().trim().min(2, 'Họ tên phải có ít nhất 2 ký tự.');
+const usernameSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[a-zA-Z0-9._-]{3,}$/,
+    'Tên đăng nhập tối thiểu 3 ký tự và chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.',
+  );
+const userPhoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9\s.-]{8,20}$/, 'Số điện thoại không hợp lệ.');
+const userDraftSchema = z.object({
+  username: usernameSchema,
+  fullName: fullNameSchema,
+  email: optionalEmailSchema,
+  phone: userPhoneSchema,
+  role: requiredTextSchema,
+  password: passwordSchema,
+});
+const editUserDraftSchema = userDraftSchema.extend({
+  username: requiredTextSchema,
+  password: z.string(),
+});
 
-function validateDraft(draft: UserDraft, creating: boolean) {
-  if (draft.fullName.trim().length < 2) return 'Họ tên phải có ít nhất 2 ký tự.';
-  if (creating && !/^[a-zA-Z0-9._-]{3,}$/.test(draft.username.trim())) {
-    return 'Tên đăng nhập tối thiểu 3 ký tự và chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.';
-  }
-  if (!/^\+?[0-9\s.-]{8,20}$/.test(draft.phone.trim())) return 'Số điện thoại không hợp lệ.';
-  if (draft.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) return 'Email không hợp lệ.';
-  if (!draft.role) return 'Vui lòng chọn vai trò.';
-  if (creating) return validatePassword(draft.password);
-  return null;
+function resetPasswordSchema(password: string) {
+  return z.object({
+    newPassword: passwordSchema,
+    confirmPassword: z.string().refine(value => value === password, 'Hai lần nhập mật khẩu mới phải giống nhau.'),
+  });
 }
 
 export function UsersScreen() {
@@ -124,28 +137,26 @@ export function UsersScreen() {
   };
 
   const saveUser = async () => {
-    const error = validateDraft(draft, editing === null);
-    if (error) {
-      Alert.alert('Thông tin chưa hợp lệ', error);
-      return;
-    }
+    const validation = (editing === null ? userDraftSchema : editUserDraftSchema).safeParse(draft);
+    if (!validation.success) return;
+    const values = validation.data;
     setSaving(true);
     try {
       if (editing) {
         await api.patch(`/users/${editing.id}`, {
-          fullName: draft.fullName.trim(),
-          email: draft.email.trim() || null,
-          phone: draft.phone.trim(),
-          role: draft.role,
+          fullName: values.fullName,
+          email: values.email || null,
+          phone: values.phone,
+          role: values.role,
         });
       } else {
         await api.post('/users', {
-          username: draft.username.trim(),
-          fullName: draft.fullName.trim(),
-          email: draft.email.trim() || undefined,
-          phone: draft.phone.trim(),
-          role: draft.role,
-          password: draft.password,
+          username: values.username,
+          fullName: values.fullName,
+          email: values.email || undefined,
+          phone: values.phone,
+          role: values.role,
+          password: values.password,
         });
       }
       setEditing(undefined);
@@ -166,15 +177,7 @@ export function UsersScreen() {
 
   const resetPassword = async () => {
     if (!resetTarget) return;
-    const error = validatePassword(newPassword);
-    if (error) {
-      Alert.alert('Mật khẩu chưa hợp lệ', error);
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Mật khẩu chưa khớp', 'Hai lần nhập mật khẩu mới phải giống nhau.');
-      return;
-    }
+    if (!resetPasswordSchema(newPassword).safeParse({ newPassword, confirmPassword }).success) return;
     setSaving(true);
     try {
       await api.patch(`/users/${resetTarget.id}/reset-password`, { password: newPassword });
@@ -218,8 +221,8 @@ export function UsersScreen() {
         refreshing={usersQuery.isRefetching}
         onRefresh={() => void usersQuery.refetch()}
       >
-        <View style={styles.compactToolbar}>
-          <View style={styles.compactSearch}>
+        <View className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">
             <SearchField
               placeholder="Tìm tên, SĐT, email hoặc tài khoản..."
               value={searchInput}
@@ -229,21 +232,26 @@ export function UsersScreen() {
           </View>
           {can(permissions.usersCreate) ? <AppButton compact label="Thêm" onPress={openCreate} /> : null}
         </View>
-        <ChoiceChips
-          value={status}
-          options={[
-            { value: 'ACTIVE', label: 'Hoạt động' },
-            { value: 'INACTIVE', label: 'Đã khóa' },
-            { value: 'ALL', label: 'Tất cả' },
-          ]}
-          onChange={setStatus}
-        />
-        <OptionPicker
-          label="Lọc theo vai trò"
-          value={role}
-          options={[{ value: 'ALL', label: 'Tất cả vai trò' }, ...roleOptions]}
-          onChange={setRole}
-        />
+        <View className="flex-row items-center gap-2">
+          <ChoiceChips
+            value={status}
+            options={[
+              { value: 'ACTIVE', label: 'Hoạt động' },
+              { value: 'INACTIVE', label: 'Đã khóa' },
+              { value: 'ALL', label: 'Tất cả' },
+            ]}
+            onChange={setStatus}
+          />
+          <View className="min-w-0 flex-1">
+            <OptionPicker
+              label="Vai trò"
+              hideLabel
+              value={role}
+              options={[{ value: 'ALL', label: 'Tất cả vai trò' }, ...roleOptions]}
+              onChange={setRole}
+            />
+          </View>
+        </View>
 
         {usersQuery.isLoading ? <LoadingBlock /> : null}
         {usersQuery.isError ? (
@@ -253,12 +261,12 @@ export function UsersScreen() {
           <EmptyState text="Không có người dùng phù hợp." />
         ) : null}
         {usersQuery.data?.data.length ? (
-          <Card style={styles.compactTable}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Họ tên</Text>
-              <Text style={[styles.tableHeaderText, styles.phoneColumn]}>Số điện thoại</Text>
-              <Text style={[styles.tableHeaderText, styles.roleColumn]}>Vai trò</Text>
-              <View style={styles.actionColumn} />
+          <Card padded={false} className="-mx-page-x overflow-hidden">
+            <View className="min-h-[38px] flex-row items-center gap-2 border-b border-border bg-surface-muted px-2.5">
+              <Text className="min-w-0 flex-[1.25] text-caption font-semibold text-content-muted">Họ tên</Text>
+              <Text className="min-w-0 flex-1 text-caption font-semibold text-content-muted">Số điện thoại</Text>
+              <Text className="min-w-0 flex-[0.9] text-caption font-semibold text-content-muted">Vai trò</Text>
+              <View className="w-[34px] shrink-0 items-end" />
             </View>
             {usersQuery.data.data.map((target, index) => {
               const isSelf = target.id === currentUser?.id;
@@ -270,14 +278,14 @@ export function UsersScreen() {
               return (
                 <View
                   key={target.id}
-                  style={[styles.tableRow, index < usersQuery.data.data.length - 1 && styles.tableRowBorder]}
+                  className={`min-h-[58px] flex-row items-center gap-2 px-2.5 ${index < usersQuery.data.data.length - 1 ? 'border-b border-border' : ''}`}
                 >
-                  <Text numberOfLines={2} style={[styles.tableName, styles.nameColumn]}>{target.fullName}</Text>
-                  <Text numberOfLines={2} style={[styles.tableText, styles.phoneColumn]}>{target.phone || '—'}</Text>
-                  <Text numberOfLines={2} style={[styles.tableText, styles.roleColumn]}>
+                  <Text numberOfLines={2} className="min-w-0 flex-[1.25] text-body font-semibold text-content">{target.fullName}</Text>
+                  <Text numberOfLines={2} className="min-w-0 flex-1 text-xs text-content-secondary">{target.phone || '—'}</Text>
+                  <Text numberOfLines={2} className="min-w-0 flex-[0.9] text-xs text-content-secondary">
                     {roleNames.get(target.role) ?? target.role}
                   </Text>
-                  <View style={styles.actionColumn}>
+                  <View className="w-[34px] shrink-0 items-end">
                     {canEdit || canChangeStatus ? (
                       <ActionMenu
                         label={`Thao tác với ${target.fullName}`}
@@ -299,7 +307,7 @@ export function UsersScreen() {
           </Card>
         ) : null}
         {usersQuery.data?.pagination ? (
-          <Text style={styles.total}>Tổng {usersQuery.data.pagination.total.toLocaleString('vi-VN')} người dùng</Text>
+          <Text className="py-2 text-center text-xs text-content-muted">Tổng {usersQuery.data.pagination.total.toLocaleString('vi-VN')} người dùng</Text>
         ) : null}
       </Screen>
 
@@ -311,55 +319,86 @@ export function UsersScreen() {
           onClose={() => setEditing(undefined)}
           onSave={() => void saveUser()}
         >
-          <FormField
-            label="Họ và tên *"
-            value={draft.fullName}
-            editable={!saving}
-            autoCapitalize="words"
-            onChangeText={fullName => setDraft(current => ({ ...current, fullName }))}
-          />
-          <FormField
-            label="Tên đăng nhập *"
-            value={draft.username}
-            editable={!editing && !saving}
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={username => setDraft(current => ({ ...current, username }))}
-          />
-          <FormField
-            label="Email"
-            value={draft.email}
-            editable={!saving}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            onChangeText={email => setDraft(current => ({ ...current, email }))}
-          />
-          <FormField
-            label="Số điện thoại *"
-            value={draft.phone}
-            editable={!saving}
-            keyboardType="phone-pad"
-            maxLength={20}
-            onChangeText={phone => setDraft(current => ({ ...current, phone }))}
-          />
-          <OptionPicker
-            label="Vai trò *"
-            value={draft.role}
-            options={roleOptions}
-            disabled={saving}
-            onChange={nextRole => setDraft(current => ({ ...current, role: nextRole }))}
-          />
+          <View className="flex-row items-start gap-2.5">
+            <View className="min-w-0 flex-[3]">
+              <FormField
+                label="Họ tên *"
+                schema={fullNameSchema}
+                value={draft.fullName}
+                editable={!saving}
+                autoCapitalize="words"
+                onChangeText={fullName => setDraft(current => ({ ...current, fullName }))}
+              />
+            </View>
+            <View className="min-w-0 flex-[2]">
+              <FormField
+                label="Tên đăng nhập *"
+                schema={editing ? requiredTextSchema : usernameSchema}
+                value={draft.username}
+                editable={!editing && !saving}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={username => setDraft(current => ({ ...current, username }))}
+              />
+            </View>
+          </View>
+          <View className="flex-row items-start gap-2.5">
+            <View className="min-w-0 flex-[3]">
+              <FormField
+                label="Email"
+                schema={optionalEmailSchema}
+                value={draft.email}
+                editable={!saving}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                onChangeText={email => setDraft(current => ({ ...current, email }))}
+              />
+            </View>
+            <View className="min-w-0 flex-[2]">
+              <FormField
+                label="Số điện thoại *"
+                schema={userPhoneSchema}
+                value={draft.phone}
+                editable={!saving}
+                keyboardType="phone-pad"
+                maxLength={20}
+                onChangeText={phone => setDraft(current => ({ ...current, phone }))}
+              />
+            </View>
+          </View>
           {!editing ? (
-            <FormField
-              label="Mật khẩu ban đầu *"
-              hint="Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số."
-              value={draft.password}
-              editable={!saving}
-              secureTextEntry
-              autoCapitalize="none"
-              onChangeText={password => setDraft(current => ({ ...current, password }))}
+            <View className="flex-row items-start gap-2.5">
+              <View className="min-w-0 flex-[3]">
+                <FormField
+                  label="Mật khẩu *"
+                  schema={passwordSchema}
+                  hint="Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số."
+                  value={draft.password}
+                  editable={!saving}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  onChangeText={password => setDraft(current => ({ ...current, password }))}
+                />
+              </View>
+              <View className="min-w-0 flex-[2]">
+                <OptionPicker
+                  label="Vai trò *"
+                  value={draft.role}
+                  options={roleOptions}
+                  disabled={saving}
+                  onChange={nextRole => setDraft(current => ({ ...current, role: nextRole }))}
+                />
+              </View>
+            </View>
+          ) : (
+            <OptionPicker
+              label="Vai trò *"
+              value={draft.role}
+              options={roleOptions}
+              disabled={saving}
+              onChange={nextRole => setDraft(current => ({ ...current, role: nextRole }))}
             />
-          ) : null}
+          )}
         </ManagementSheet>
       ) : null}
 
@@ -373,6 +412,7 @@ export function UsersScreen() {
         >
           <FormField
             label="Mật khẩu mới *"
+            schema={passwordSchema}
             hint="Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số."
             value={newPassword}
             editable={!saving}
@@ -382,6 +422,7 @@ export function UsersScreen() {
           />
           <FormField
             label="Nhập lại mật khẩu mới *"
+            schema={z.string().refine(value => value === newPassword, 'Hai lần nhập mật khẩu mới phải giống nhau.')}
             value={confirmPassword}
             editable={!saving}
             secureTextEntry
@@ -393,29 +434,3 @@ export function UsersScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  compactSearch: { flex: 1, minWidth: 0 },
-  compactTable: { padding: 0, overflow: 'hidden' },
-  tableHeader: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceMuted,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
-  tableRow: { minHeight: 58, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  nameColumn: { flex: 1.25, minWidth: 0 },
-  phoneColumn: { flex: 1, minWidth: 0 },
-  roleColumn: { flex: 0.9, minWidth: 0 },
-  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
-  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  tableText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
-  total: { color: colors.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 8 },
-});

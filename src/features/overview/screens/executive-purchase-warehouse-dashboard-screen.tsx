@@ -6,11 +6,11 @@ import {
   Modal,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { z } from "zod";
 import {
   BarChart,
   type barDataItem,
@@ -35,6 +35,7 @@ import {
 import { colors, ui } from "@/theme/colors";
 import { formatNumber, todayIso } from "@/utils/format";
 import { shareProtectedApiFile } from "@/utils/protected-file";
+import { firstZodError, isoDateSchema } from "@/lib/validation";
 
 interface WarehouseMetric {
   id: string;
@@ -47,7 +48,6 @@ interface WarehouseMetric {
   advanceBalance: number;
   missingPriceCount: number;
 }
-
 interface DashboardResponse {
   success: boolean;
   fromDate: string;
@@ -55,7 +55,6 @@ interface DashboardResponse {
   todayDate: string;
   warehouses: WarehouseMetric[];
 }
-
 type DashboardChartKey = "today" | "cumulative" | "payment";
 
 interface DashboardChartSelection {
@@ -78,6 +77,11 @@ const chartTooltipWidth = 174;
 const chartTooltipGap = 8;
 const importTooltipEstimatedHeight = 76;
 const paymentTooltipEstimatedHeight = 132;
+const dashboardDateRangeSchema = z.object({ from: isoDateSchema, to: isoDateSchema }).refine(
+  value => value.from <= value.to,
+  { path: ["to"], message: "Ngày bắt đầu không được lớn hơn ngày kết thúc." },
+);
+const chartYAxisLabelStyle = { color: colors.textMuted, fontSize: 9 } as const;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
@@ -173,7 +177,7 @@ function isoDate(value: Date) {
 }
 
 function displayDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (!isoDateSchema.safeParse(value).success) return value;
   return `${value.slice(8, 10)}-${value.slice(5, 7)}-${value.slice(0, 4)}`;
 }
 
@@ -187,25 +191,25 @@ function DateField({
   onPress: () => void;
 }) {
   return (
-    <View style={styles.dateFieldContent}>
-      <Text style={styles.dateLabel}>{label}</Text>
+    <View className="gap-[7px]">
+      <Text className="text-body font-semibold text-content">{label}</Text>
       <Pressable
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [
-          styles.dateInput,
-          pressed && styles.dateInputPressed,
-        ]}
+        className="h-control flex-row items-center gap-[5px] rounded-control border px-[9px]"
+        style={({ pressed }) => ({
+          borderColor: pressed ? colors.primaryBorder : colors.border,
+          backgroundColor: pressed ? colors.primarySoft : colors.surface,
+        })}
       >
-        <Text numberOfLines={1} style={styles.dateValue}>
+        <Text numberOfLines={1} className="flex-1 text-xs text-content">
           {displayDate(value)}
         </Text>
-        <Text style={styles.calendarIcon}>▦</Text>
+        <Text className="text-[15px] font-bold text-primary">▦</Text>
       </Pressable>
     </View>
   );
 }
-
 function useVerticalChartLayout(columnCount: number) {
   const { width: windowWidth } = useWindowDimensions();
   const viewportWidth =
@@ -316,14 +320,13 @@ function ChartXAxisLabel({
     <Text
       allowFontScaling={false}
       numberOfLines={1}
-      style={[
-        styles.chartXAxisLabel,
-        {
-          marginLeft: (slotWidth - textWidth) / 2,
-          transform: additionalRotation ? [{ rotate }] : undefined,
-          width: textWidth,
-        },
-      ]}
+      className="h-[14px] text-center text-[10px] font-semibold leading-[14px] text-content-secondary"
+      style={{
+        includeFontPadding: false,
+        marginLeft: (slotWidth - textWidth) / 2,
+        transform: additionalRotation ? [{ rotate }] : undefined,
+        width: textWidth,
+      }}
     >
       {label}
     </Text>
@@ -336,7 +339,8 @@ function ChartTopLabel({ color, value }: { color: string; value: string }) {
       adjustsFontSizeToFit
       minimumFontScale={0.65}
       numberOfLines={1}
-      style={[styles.chartTopLabel, { color }]}
+      className="w-full px-px text-center text-[10px] font-semibold leading-[13px]"
+      style={{ color }}
     >
       {value}
     </Text>
@@ -351,18 +355,16 @@ function ChartTooltip({
   rows: { color?: string; label: string; value: string }[];
 }) {
   return (
-    <View style={styles.chartTooltip}>
-      <Text numberOfLines={2} style={styles.chartTooltipTitle}>
+    <View className="w-[174px] gap-1 rounded-[9px] border border-border bg-surface p-[9px] shadow-lg">
+      <Text numberOfLines={2} className="mb-0.5 text-xs font-bold leading-4 text-content">
         {title}
       </Text>
       {rows.map((row) => (
-        <View key={row.label} style={styles.chartTooltipRow}>
-          <Text style={styles.chartTooltipLabel}>{row.label}</Text>
+        <View key={row.label} className="flex-row items-start justify-between gap-2">
+          <Text className="flex-1 text-[10px] leading-[14px] text-content-muted">{row.label}</Text>
           <Text
-            style={[
-              styles.chartTooltipValue,
-              row.color ? { color: row.color } : undefined,
-            ]}
+            className="shrink-0 text-right text-[10px] font-bold leading-[14px] text-content"
+            style={row.color ? { color: row.color } : undefined}
           >
             {row.value}
           </Text>
@@ -463,7 +465,7 @@ function ImportChart({
           currentHeight === nextHeight ? currentHeight : nextHeight,
         );
       }}
-      style={styles.chartLibraryContainer}
+      className="-ml-1 min-h-0 flex-1 justify-end"
     >
       <BarChart
         data={data}
@@ -478,10 +480,10 @@ function ImportChart({
         overflowTop={28}
         yAxisLabelWidth={chartYAxisLabelWidth}
         yAxisThickness={0}
-        yAxisTextStyle={styles.chartYAxisLabel}
+        yAxisTextStyle={chartYAxisLabelStyle}
         yAxisLabelSuffix="t"
         formatYLabel={(label) => formatNumber(Number(label), 1)}
-        xAxisThickness={StyleSheet.hairlineWidth}
+        xAxisThickness={1}
         xAxisColor={colors.border}
         xAxisLabelsHeight={showXAxisLabels ? chartXAxisLabelHeight : 0}
         xAxisTextNumberOfLines={1}
@@ -493,7 +495,7 @@ function ImportChart({
         }
         rotateLabel={showXAxisLabels}
         rulesColor={colors.border}
-        rulesThickness={StyleSheet.hairlineWidth}
+        rulesThickness={1}
         disableScroll
         focusBarOnPress
         focusedBarIndex={activeIndex ?? -1}
@@ -502,7 +504,8 @@ function ImportChart({
       {selectedWarehouse && tooltipPosition ? (
         <View
           pointerEvents="box-only"
-          style={[styles.chartTooltipOverlay, tooltipPosition]}
+          className="absolute z-20"
+          style={tooltipPosition}
         >
           <ChartTooltip
             title={selectedWarehouse.warehouseName}
@@ -526,9 +529,9 @@ function ImportChart({
 
 function LegendItem({ color, label }: { color: string; label: string }) {
   return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendColor, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
+    <View className="flex-row items-center gap-[5px]">
+      <View className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+      <Text className="text-caption font-bold text-content-muted">{label}</Text>
     </View>
   );
 }
@@ -637,7 +640,7 @@ function PaymentChart({
             currentHeight === nextHeight ? currentHeight : nextHeight,
           );
         }}
-        style={styles.chartLibraryContainer}
+        className="-ml-1 min-h-0 flex-1 justify-end"
       >
         <BarChart
           stackData={stackData}
@@ -652,9 +655,9 @@ function PaymentChart({
           overflowTop={28}
           yAxisLabelWidth={chartYAxisLabelWidth}
           yAxisThickness={0}
-          yAxisTextStyle={styles.chartYAxisLabel}
+          yAxisTextStyle={chartYAxisLabelStyle}
           formatYLabel={(label) => formatNumber(Number(label), 1)}
-          xAxisThickness={StyleSheet.hairlineWidth}
+          xAxisThickness={1}
           xAxisColor={colors.border}
           xAxisLabelsHeight={showXAxisLabels ? chartXAxisLabelHeight : 0}
           xAxisTextNumberOfLines={1}
@@ -666,7 +669,7 @@ function PaymentChart({
           }
           rotateLabel={showXAxisLabels}
           rulesColor={colors.border}
-          rulesThickness={StyleSheet.hairlineWidth}
+          rulesThickness={1}
           stackBorderTopLeftRadius={5}
           stackBorderTopRightRadius={5}
           disableScroll
@@ -677,7 +680,8 @@ function PaymentChart({
         {selectedWarehouse && tooltipPosition ? (
           <View
             pointerEvents="box-only"
-            style={[styles.chartTooltipOverlay, tooltipPosition]}
+            className="absolute z-20"
+            style={tooltipPosition}
           >
             <ChartTooltip
               title={selectedWarehouse.warehouseName}
@@ -706,7 +710,7 @@ function PaymentChart({
           </View>
         ) : null}
       </View>
-      <View style={styles.legend}>
+      <View className="mt-1 flex-row flex-wrap justify-center gap-x-2.5 gap-y-1">
         <LegendItem color="#16A34A" label="Đã thanh toán" />
         <LegendItem color="#F59E0B" label="Chưa thanh toán" />
         <LegendItem color="#2563EB" label="Ứng trước còn dư" />
@@ -733,12 +737,12 @@ function ImportChartSection({
   warehouses: WarehouseMetric[];
 }) {
   return (
-    <View style={styles.importChartSection}>
-      <View style={styles.importChartHeading}>
-        <View style={styles.cardTitleWrap}>
-          <Text style={styles.importChartTitle}>{title}</Text>
+    <View className="min-h-0 min-w-0 flex-1">
+      <View className="mb-1 flex-row items-start justify-between gap-3">
+        <View className="flex-1 gap-[3px]">
+          <Text className="text-[15px] font-bold text-content">{title}</Text>
         </View>
-        <Text style={styles.totalImport}>{formatTons(total)}</Text>
+        <Text className="text-[15px] font-bold text-primary-dark">{formatTons(total)}</Text>
       </View>
       <ImportChart
         activeIndex={activeIndex}
@@ -763,12 +767,12 @@ function PaymentChartSection({
   warehouses: WarehouseMetric[];
 }) {
   return (
-    <View style={[styles.importChartSection, styles.paymentChartSection]}>
-      <View style={styles.importChartHeading}>
-        <View style={styles.cardTitleWrap}>
-          <Text style={styles.importChartTitle}>Thanh toán</Text>
+    <View className="min-h-0 min-w-0 flex-[1.35]">
+      <View className="mb-1 flex-row items-start justify-between gap-3">
+        <View className="flex-1 gap-[3px]">
+          <Text className="text-[15px] font-bold text-content">Thanh toán</Text>
         </View>
-        <Text style={styles.totalPayment}>{formatMillion(total)}</Text>
+        <Text className="text-[15px] font-bold text-[#15803D]">{formatMillion(total)}</Text>
       </View>
       <PaymentChart
         activeIndex={activeIndex}
@@ -794,12 +798,8 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
   const selectionBeforeTouchRef = useRef<DashboardChartSelection | undefined>(
     undefined,
   );
-  const dateError =
-    !/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)
-      ? "Nhập ngày theo định dạng YYYY-MM-DD."
-      : fromDate > toDate
-        ? "Ngày bắt đầu không được lớn hơn ngày kết thúc."
-        : undefined;
+  const dateValidation = dashboardDateRangeSchema.safeParse({ from: fromDate, to: toDate });
+  const dateError = firstZodError(dateValidation) ?? undefined;
   const query = useQuery({
     queryKey: [
       "executive-purchase-warehouse-dashboard-mobile",
@@ -890,15 +890,15 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
       onTouchStart={dismissChartTooltip}
       scrollEnabled={false}
     >
-      <View style={styles.dateRow}>
-        <View style={styles.dateField}>
+      <View className="flex-row items-end gap-1.5">
+        <View className="min-w-0 flex-1">
           <DateField
             label="Từ ngày"
             value={fromDate}
             onPress={() => setActiveDateField("from")}
           />
         </View>
-        <View style={styles.dateField}>
+        <View className="min-w-0 flex-1">
           <DateField
             label="Đến ngày"
             value={toDate}
@@ -918,7 +918,7 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
       </View>
       {dateError ? (
         <Card tone="danger">
-          <Text style={styles.errorText}>{dateError}</Text>
+          <Text className="text-body font-bold leading-[19px] text-danger">{dateError}</Text>
         </Card>
       ) : null}
 
@@ -926,6 +926,7 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
         <ExpoDateTimePicker
           value={parseIsoDate(activeDate)}
           mode="date"
+          display="spinner"
           presentation="dialog"
           maximumDate={parseIsoDate(todayIso())}
           positiveButton={{ label: "Chọn" }}
@@ -940,9 +941,9 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
           animationType="fade"
           onRequestClose={() => setActiveDateField(undefined)}
         >
-          <View style={styles.datePickerOverlay}>
-            <View style={styles.datePickerCard}>
-              <Text style={styles.datePickerTitle}>
+          <View className="flex-1 items-center justify-center bg-[rgba(15,23,42,0.48)] p-[18px]">
+            <View className="w-full max-w-[390px] gap-3 rounded-card bg-surface p-3.5">
+              <Text className="text-center text-base font-bold text-content">
                 {activeDateField === "from"
                   ? "Chọn ngày bắt đầu"
                   : "Chọn ngày kết thúc"}
@@ -950,9 +951,9 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
               <ExpoDateTimePicker
                 value={parseIsoDate(activeDate)}
                 mode="date"
-                display="inline"
+                display="spinner"
                 maximumDate={parseIsoDate(todayIso())}
-                locale="vi_VN"
+                locale="en_GB"
                 accentColor={colors.primary}
                 onValueChange={(_, date) => selectDate(date)}
               />
@@ -976,9 +977,9 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
       ) : null}
 
       {query.data?.warehouses.length ? (
-        <View style={styles.dashboardBody}>
-          <Card style={styles.dashboardCard}>
-            <View style={styles.importCharts}>
+        <View className="min-h-0 flex-1">
+          <Card className="min-h-0 flex-1">
+            <View className="min-h-0 flex-1 gap-2">
               <ImportChartSection
                 activeIndex={
                   selectedChartColumn?.chart === "today"
@@ -991,7 +992,7 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
                 total={totals.todayImport}
                 warehouses={query.data.warehouses}
               />
-              <View style={styles.importChartDivider} />
+              <View className="h-px bg-border" />
               <ImportChartSection
                 activeIndex={
                   selectedChartColumn?.chart === "cumulative"
@@ -1006,7 +1007,7 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
                 total={totals.cumulativeImport}
                 warehouses={query.data.warehouses}
               />
-              <View style={styles.importChartDivider} />
+              <View className="h-px bg-border" />
               <PaymentChartSection
                 activeIndex={
                   selectedChartColumn?.chart === "payment"
@@ -1024,154 +1025,3 @@ export function ExecutivePurchaseWarehouseDashboardScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  dateRow: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
-  dateField: { flex: 1, minWidth: 0 },
-  dateFieldContent: { gap: 7 },
-  dateLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  dateInput: {
-    minHeight: ui.controlHeight,
-    paddingHorizontal: 9,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  dateInputPressed: {
-    borderColor: colors.primaryBorder,
-    backgroundColor: colors.primarySoft,
-  },
-  dateValue: { flex: 1, color: colors.text, fontSize: 12 },
-  calendarIcon: { color: colors.primary, fontSize: 15, fontWeight: "700" },
-  datePickerOverlay: {
-    flex: 1,
-    padding: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.48)",
-  },
-  datePickerCard: {
-    width: "100%",
-    maxWidth: 390,
-    padding: 14,
-    borderRadius: ui.cardRadius,
-    backgroundColor: colors.surface,
-    gap: 12,
-  },
-  datePickerTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: "700",
-  },
-  dashboardBody: { flex: 1, minHeight: 0 },
-  dashboardCard: { flex: 1, minHeight: 0 },
-  importCharts: { flex: 1, minHeight: 0, gap: 8 },
-  importChartSection: { flex: 1, minWidth: 0, minHeight: 0 },
-  paymentChartSection: { flex: 1.35 },
-  importChartHeading: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: ui.gap,
-    marginBottom: 4,
-  },
-  importChartTitle: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  importChartDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-  },
-  cardTitleWrap: { flex: 1, gap: 3 },
-  totalImport: { color: colors.primaryDark, fontSize: 15, fontWeight: "700" },
-  totalPayment: { color: "#15803D", fontSize: 15, fontWeight: "700" },
-  chartLibraryContainer: {
-    flex: 1,
-    minHeight: 0,
-    marginLeft: -4,
-    justifyContent: "flex-end",
-  },
-  chartTopLabel: {
-    width: "100%",
-    paddingHorizontal: 1,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  chartXAxisLabel: {
-    height: chartXAxisLabelHeight,
-    color: colors.textSecondary,
-    fontSize: 10,
-    lineHeight: chartXAxisLabelHeight,
-    fontWeight: "600",
-    textAlign: "center",
-    includeFontPadding: false,
-  },
-  chartYAxisLabel: { color: colors.textMuted, fontSize: 9 },
-  chartTooltipOverlay: {
-    position: "absolute",
-    zIndex: 20,
-  },
-  chartTooltip: {
-    width: chartTooltipWidth,
-    padding: 9,
-    borderRadius: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    shadowColor: colors.sidebar,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    elevation: 4,
-    gap: 4,
-  },
-  chartTooltipTitle: {
-    marginBottom: 2,
-    color: colors.text,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  chartTooltipRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  chartTooltipLabel: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  chartTooltipValue: {
-    flexShrink: 0,
-    color: colors.text,
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "700",
-    textAlign: "right",
-  },
-  legend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    columnGap: 10,
-    rowGap: 4,
-    marginTop: 4,
-  },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  legendColor: { width: 10, height: 10, borderRadius: 2 },
-  legendText: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
-});

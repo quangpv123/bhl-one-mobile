@@ -4,35 +4,37 @@
     "slug": "bhl-one",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/bhl-one-icon.png",
+    "icon": "./assets/images/bhl-one-work-icon-v4.png",
     "scheme": "bhl-one",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/images/bhl-one-icon.png",
+      "icon": "./assets/images/bhl-one-work-icon-v4.png",
       "bundleIdentifier": "vn.io.bhl.one",
       "supportsTablet": true
     },
     "android": {
       "package": "vn.io.bhl.one",
       "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#0F4C81",
-        "foregroundImage": "./assets/images/bhl-one-icon.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/bhl-one-work-icon-v4.png"
       },
       "predictiveBackGestureEnabled": true
     },
     "web": {
+      "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/bhl-one-icon.png"
+      "favicon": "./assets/images/bhl-one-work-icon-v4.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F4F7FB",
-          "image": "./assets/images/bhl-one-icon.png",
-          "imageWidth": 132
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/images/bhl-one-work-icon-v4.png",
+          "imageWidth": 220
         }
       ],
       "expo-secure-store",

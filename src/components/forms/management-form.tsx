@@ -1,21 +1,77 @@
-import { useState, type PropsWithChildren } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
   type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { z } from 'zod';
 
-import { AppButton } from '@/components/ui';
-import { colors, typography, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
+import { validateValue } from '@/lib/validation';
 import { PasswordInput } from './password-input';
+
+interface FormValidationContextValue {
+  attempt: number;
+  reportValidity?: (fieldId: string, invalid: boolean) => void;
+}
+
+const FormValidationAttemptContext = createContext<FormValidationContextValue>({ attempt: 0 });
+
+export function FormValidationProvider({
+  attempt,
+  onValidityChange,
+  children,
+}: PropsWithChildren<{
+  attempt: number;
+  onValidityChange?: (fieldId: string, invalid: boolean) => void;
+}>) {
+  return (
+    <FormValidationAttemptContext.Provider value={{ attempt, reportValidity: onValidityChange }}>
+      {children}
+    </FormValidationAttemptContext.Provider>
+  );
+}
+
+function isRequiredLabel(label: string) {
+  return /\s*\*$/.test(label);
+}
+
+export function useFormFieldError(
+  label: string,
+  value: unknown,
+  error?: string | null,
+  keyboardType?: TextInputProps['keyboardType'],
+  schema?: z.ZodType,
+) {
+  const fieldId = useId();
+  const { attempt, reportValidity } = useContext(FormValidationAttemptContext);
+  const validationError = error || validateValue(value, {
+    required: isRequiredLabel(label),
+    phone: keyboardType === 'phone-pad',
+    schema,
+  });
+  useEffect(() => {
+    reportValidity?.(fieldId, Boolean(validationError));
+    return () => reportValidity?.(fieldId, false);
+  }, [fieldId, reportValidity, validationError]);
+  return error || attempt > 0 ? validationError : null;
+}
 
 export function ManagementSheet({
   title,
@@ -31,46 +87,91 @@ export function ManagementSheet({
   onClose: () => void;
   onSave: () => void;
 }>) {
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const invalidFields = useRef(new Set<string>());
+  const reportValidity = useCallback((fieldId: string, invalid: boolean) => {
+    if (invalid) invalidFields.current.add(fieldId);
+    else invalidFields.current.delete(fieldId);
+  }, []);
+  const submit = () => {
+    setValidationAttempt(current => current + 1);
+    if (invalidFields.current.size > 0) return;
+    onSave();
+  };
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.header}>
-            <Pressable disabled={saving} onPress={onClose} hitSlop={8}>
-              <Text style={styles.cancel}>Hủy</Text>
-            </Pressable>
-            <Text numberOfLines={1} style={styles.title}>{title}</Text>
-            <Pressable disabled={saving} onPress={onSave} hitSlop={8}>
-              <Text style={[styles.save, saving && styles.disabledText]}>Lưu</Text>
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            {children}
-            <AppButton label={saveLabel} loading={saving} onPress={onSave} />
-          </ScrollView>
-        </KeyboardAvoidingView>
+      <SafeAreaView className="flex-1 bg-background">
+        <FormValidationProvider attempt={validationAttempt} onValidityChange={reportValidity}>
+          <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View className="min-h-header flex-row items-center justify-between gap-3 border-b border-border bg-surface px-4">
+              <Pressable disabled={saving} onPress={onClose} hitSlop={8}>
+                <Text className="text-sm font-semibold text-content-muted">Hủy</Text>
+              </Pressable>
+              <Text numberOfLines={1} className="flex-1 text-center text-card font-bold text-content">{title}</Text>
+              <Pressable
+                accessibilityLabel={saveLabel}
+                disabled={saving}
+                onPress={submit}
+                hitSlop={8}
+              >
+                <Text className={`text-sm font-semibold text-primary ${saving ? 'opacity-45' : ''}`}>Lưu</Text>
+              </Pressable>
+            </View>
+            <ScrollView contentContainerClassName="gap-3 p-3 pb-6" keyboardShouldPersistTaps="handled">
+              {children}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </FormValidationProvider>
       </SafeAreaView>
     </Modal>
   );
 }
 
-export function FormField({ label, hint, secureTextEntry, ...props }: TextInputProps & { label: string; hint?: string }) {
+export function FormLabel({ label }: { label: string }) {
+  const required = /\s*\*$/.test(label);
+  const text = required ? label.replace(/\s*\*$/, '') : label;
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+    <Text className="text-label font-semibold text-content">
+      {text}
+      {required ? <Text className="text-danger"> *</Text> : null}
+    </Text>
+  );
+}
+
+export function FormField({
+  label,
+  hint,
+  error,
+  schema,
+  secureTextEntry,
+  ...props
+}: TextInputProps & { label: string; hint?: string; error?: string | null; schema?: z.ZodType }) {
+  const errorMessage = useFormFieldError(label, props.value, error, props.keyboardType, schema);
+  return (
+    <View className="gap-[7px]">
+      <FormLabel label={label} />
       {secureTextEntry ? (
         <PasswordInput
           {...props}
-          containerStyle={props.editable === false && styles.inputDisabled}
+          containerStyle={[
+            props.editable === false && { backgroundColor: colors.surfaceMuted, opacity: 0.72 },
+            errorMessage && { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+          ]}
         />
       ) : (
         <TextInput
           {...props}
           placeholderTextColor={colors.textPlaceholder}
-          style={[styles.input, props.multiline && styles.textArea, props.editable === false && styles.inputDisabled, props.style]}
+          className={`rounded-control border px-3 text-sm text-content ${
+            props.multiline ? 'h-[92px] py-[13px]' : 'h-control py-0'
+          } ${props.editable === false ? 'border-border bg-surface-muted opacity-70' : 'border-border bg-surface'} ${
+            errorMessage ? 'border-danger bg-danger-soft' : ''
+          }`}
+          style={[{ textAlignVertical: props.multiline ? 'top' : 'center', includeFontPadding: false }, props.style]}
         />
       )}
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {errorMessage ? <Text className="text-caption font-medium text-danger">{errorMessage}</Text> : null}
+      {!errorMessage && hint ? <Text className="text-xs leading-[18px] text-content-muted">{hint}</Text> : null}
     </View>
   );
 }
@@ -81,6 +182,9 @@ export function OptionPicker({
   options,
   placeholder = 'Chọn giá trị',
   disabled = false,
+  hideLabel = false,
+  error,
+  schema,
   onChange,
 }: {
   label: string;
@@ -88,33 +192,40 @@ export function OptionPicker({
   options: { value: string; label: string; description?: string }[];
   placeholder?: string;
   disabled?: boolean;
+  hideLabel?: boolean;
+  error?: string | null;
+  schema?: z.ZodType;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const selected = options.find(option => option.value === value);
+  const errorMessage = useFormFieldError(label, value, error, undefined, schema);
 
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+    <View className="gap-[7px]">
+      {hideLabel ? null : <FormLabel label={label} />}
       <Pressable
         accessibilityRole="button"
         disabled={disabled}
         onPress={() => setOpen(true)}
-        style={[styles.select, disabled && styles.inputDisabled]}
+        className={`h-control flex-row items-center justify-between gap-2.5 rounded-control border px-3 ${
+          disabled ? 'border-border bg-surface-muted opacity-70' : 'border-border bg-surface'
+        } ${errorMessage ? 'border-danger bg-danger-soft' : ''}`}
       >
-        <Text style={[styles.selectText, !selected && styles.placeholder]}>{selected?.label || placeholder}</Text>
-        <Text style={styles.chevron}>⌄</Text>
+        <Text numberOfLines={1} className={`flex-1 text-sm ${selected ? 'font-semibold text-content' : 'font-normal text-content-placeholder'}`}>{selected?.label || placeholder}</Text>
+        <Text className="text-xl text-content-muted">⌄</Text>
       </Pressable>
+      {errorMessage ? <Text className="text-caption font-medium text-danger">{errorMessage}</Text> : null}
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.header}>
+        <SafeAreaView className="flex-1 bg-background">
+          <View className="min-h-header flex-row items-center justify-between gap-3 border-b border-border bg-surface px-4">
             <Pressable onPress={() => setOpen(false)} hitSlop={8}>
-              <Text style={styles.cancel}>Đóng</Text>
+              <Text className="text-sm font-semibold text-content-muted">Đóng</Text>
             </Pressable>
-            <Text numberOfLines={1} style={styles.title}>{label}</Text>
-            <View style={styles.headerSpacer} />
+            <Text numberOfLines={1} className="flex-1 text-center text-card font-bold text-content">{label}</Text>
+            <View className="w-[42px]" />
           </View>
-          <ScrollView contentContainerStyle={styles.options}>
+          <ScrollView contentContainerClassName="gap-2 p-3 pb-6">
             {options.map(option => {
               const isSelected = option.value === value;
               return (
@@ -125,13 +236,15 @@ export function OptionPicker({
                     onChange(option.value);
                     setOpen(false);
                   }}
-                  style={[styles.option, isSelected && styles.optionSelected]}
+                  className={`min-h-[50px] flex-row items-center gap-3 rounded-control border px-3 py-[9px] ${
+                    isSelected ? 'border-primary-border bg-primary-soft' : 'border-border bg-surface'
+                  }`}
                 >
-                  <View style={styles.optionTextWrap}>
-                    <Text style={[styles.optionTitle, isSelected && styles.optionTitleSelected]}>{option.label}</Text>
-                    {option.description ? <Text style={styles.optionDescription}>{option.description}</Text> : null}
+                  <View className="flex-1">
+                    <Text className={`text-[15px] font-semibold ${isSelected ? 'text-primary-dark' : 'text-content'}`}>{option.label}</Text>
+                    {option.description ? <Text className="mt-[3px] text-label text-content-muted">{option.description}</Text> : null}
                   </View>
-                  {isSelected ? <Text style={styles.check}>✓</Text> : null}
+                  {isSelected ? <Text className="text-lg font-bold text-primary">✓</Text> : null}
                 </Pressable>
               );
             })}
@@ -141,74 +254,3 @@ export function OptionPicker({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1 },
-  header: {
-    minHeight: ui.headerHeight,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  title: { flex: 1, color: colors.text, ...typography.cardTitle, textAlign: 'center' },
-  cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  disabledText: { opacity: 0.45 },
-  headerSpacer: { width: 42 },
-  content: { padding: 12, gap: 12, paddingBottom: 24 },
-  field: { gap: 7 },
-  label: { color: colors.text, ...typography.label },
-  input: {
-    minHeight: ui.controlHeight,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    color: colors.text,
-    fontSize: 14,
-  },
-  textArea: { minHeight: 92, paddingTop: 13, paddingBottom: 13, textAlignVertical: 'top' },
-  inputDisabled: { backgroundColor: colors.surfaceMuted, opacity: 0.72 },
-  hint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
-  select: {
-    minHeight: ui.controlHeight,
-    paddingHorizontal: 12,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  selectText: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
-  placeholder: { color: colors.textPlaceholder, fontWeight: '400' },
-  chevron: { color: colors.textMuted, fontSize: 20 },
-  options: { padding: 12, gap: 8, paddingBottom: 24 },
-  option: {
-    minHeight: 50,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  optionSelected: { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft },
-  optionTextWrap: { flex: 1 },
-  optionTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  optionTitleSelected: { color: colors.primaryDark },
-  optionDescription: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  check: { color: colors.primary, fontSize: 18, fontWeight: '700' },
-});

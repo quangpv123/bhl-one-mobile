@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
+import { z } from 'zod';
 
 import { Screen } from '@/components/screen';
+import { ManagerContact } from '@/components/manager-contact';
 import {
   ActionMenu,
   AppButton,
@@ -18,13 +20,13 @@ import {
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage, hasProtectedApiSession } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { PaginatedResponse } from '@/types/business';
 import { pickSpreadsheet, spreadsheetFormData } from '@/utils/document-upload';
-import { formatNumber } from '@/utils/format';
+import { displayDateToIso, formatDate, formatNumber } from '@/utils/format';
 import { shareProtectedApiFile } from '@/utils/protected-file';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
+import { decimalStringSchema, displayDateSchema, isoDateSchema, requiredTextSchema } from '@/lib/validation';
 
 type ActiveStatus = 'ACTIVE' | 'INACTIVE';
 
@@ -44,14 +46,12 @@ interface VehicleRecord {
   managerPhone: string | null;
   status: ActiveStatus;
 }
-
 interface VehicleTypeRecord {
   id: string;
   vehicleTypeCode: string;
   vehicleTypeName: string;
   status: ActiveStatus;
 }
-
 interface ActiveUserOption {
   id: string;
   username: string;
@@ -92,6 +92,33 @@ const statusOptions = [
   { value: 'ACTIVE', label: 'Hoạt động' },
   { value: 'INACTIVE', label: 'Tạm dừng' },
 ];
+
+const optionalPayloadSchema = z.union([
+  z.literal(''),
+  decimalStringSchema({ minimum: 0.000001, maximum: 1000, message: 'Tải trọng phải lớn hơn 0 và không vượt quá 1.000 tấn.' }),
+]);
+const optionalIsoDateSchema = z.union([z.literal(''), isoDateSchema]);
+const optionalDisplayDateSchema = z.union([z.literal(''), displayDateSchema]);
+const vehicleDraftSchema = z.object({
+  licensePlate: requiredTextSchema,
+  vehicleTypeId: requiredTextSchema,
+  payloadCapacityTons: optionalPayloadSchema,
+  brand: z.string(),
+  ownerName: z.string(),
+  registrationExpiry: optionalIsoDateSchema,
+  managerUserId: z.string(),
+  status: z.enum(['ACTIVE', 'INACTIVE']),
+});
+const administrativeDraftSchema = z.object({
+  code: requiredTextSchema,
+  name: requiredTextSchema,
+  provinceCode: z.string(),
+  status: z.enum(['ACTIVE', 'INACTIVE']),
+}).superRefine((value, context) => {
+  if (!value.provinceCode) {
+    context.addIssue({ code: 'custom', path: ['provinceCode'], message: 'Vui lòng chọn tỉnh/thành phố.' });
+  }
+});
 
 function ActiveBadge({ status }: { status: ActiveStatus }) {
   return <StatusBadge label={status === 'ACTIVE' ? 'Hoạt động' : 'Tạm dừng'} tone={status === 'ACTIVE' ? 'success' : 'neutral'} />;
@@ -178,30 +205,21 @@ export function VehiclesScreen() {
   };
 
   const save = async () => {
-    const plate = draft.licensePlate.trim().toUpperCase();
-    const payloadCapacityTons = draft.payloadCapacityTons.trim() ? Number(draft.payloadCapacityTons.replace(',', '.')) : null;
-    if ((!editing && !plate) || !draft.vehicleTypeId) {
-      Alert.alert('Thiếu thông tin', 'Nhập biển số và chọn loại xe.');
-      return;
-    }
-    if (payloadCapacityTons != null && (!Number.isFinite(payloadCapacityTons) || payloadCapacityTons <= 0 || payloadCapacityTons > 1000)) {
-      Alert.alert('Tải trọng chưa hợp lệ', 'Tải trọng phải lớn hơn 0 và không vượt quá 1.000 tấn.');
-      return;
-    }
-    if (draft.registrationExpiry && !/^\d{4}-\d{2}-\d{2}$/.test(draft.registrationExpiry)) {
-      Alert.alert('Hạn đăng kiểm chưa hợp lệ', 'Nhập ngày theo định dạng YYYY-MM-DD.');
-      return;
-    }
+    const validation = vehicleDraftSchema.safeParse(draft);
+    if (!validation.success) return;
+    const values = validation.data;
+    const plate = values.licensePlate.toUpperCase();
+    const payloadCapacityTons = values.payloadCapacityTons ? Number(values.payloadCapacityTons.replace(',', '.')) : null;
     setSaving(true);
     try {
       const payload = {
-        vehicleTypeId: draft.vehicleTypeId,
+        vehicleTypeId: values.vehicleTypeId,
         payloadCapacityTons,
-        brand: draft.brand.trim() || null,
-        ownerName: draft.ownerName.trim() || null,
-        registrationExpiry: draft.registrationExpiry || null,
-        managerUserId: draft.managerUserId || null,
-        status: draft.status,
+        brand: values.brand.trim() || null,
+        ownerName: values.ownerName.trim() || null,
+        registrationExpiry: values.registrationExpiry || null,
+        managerUserId: values.managerUserId || null,
+        status: values.status,
       };
       if (editing) await api.patch(`/catalog/vehicles/${editing.id}`, payload);
       else await api.post('/catalog/vehicles', { licensePlate: plate, ...payload });
@@ -289,7 +307,7 @@ export function VehiclesScreen() {
         title="Phương tiện"
         subtitle="Thông tin xe và tài khoản phụ trách"
         action={can(permissions.catalogVehiclesCreate) ? (
-          <View style={styles.headerActions}>
+          <View className="flex-row items-center gap-[7px]">
             <AppButton
               compact
               tone="secondary"
@@ -314,23 +332,27 @@ export function VehiclesScreen() {
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có phương tiện phù hợp." /> : null}
         {query.data?.data.map(vehicle => (
           <Card key={vehicle.id}>
-            <View style={styles.heading}>
-              <View style={styles.titleWrap}>
-                <Text style={styles.plate}>{vehicle.licensePlate}</Text>
-                <Text style={styles.code}>{vehicle.vehicleTypeName}</Text>
+            <View className="flex-row items-start justify-between gap-3">
+              <View className="flex-1">
+                <Text className="text-[19px] font-bold leading-6 tracking-[0.5px] text-content">{vehicle.licensePlate}</Text>
+                <Text className="mt-1 text-body font-bold text-primary-dark">{vehicle.vehicleTypeName}</Text>
               </View>
               <ActiveBadge status={vehicle.status} />
             </View>
-            <View style={styles.rows}>
+            <View className="mt-2.5">
               <InfoRow label="Nhãn hiệu" value={vehicle.brand || '—'} />
               <InfoRow label="Tải trọng" value={vehicle.payloadCapacityTons == null ? '—' : `${formatNumber(vehicle.payloadCapacityTons)} tấn`} />
               <InfoRow label="Chủ xe" value={vehicle.ownerName || '—'} />
-              <InfoRow label="Hạn đăng kiểm" value={vehicle.registrationExpiry?.slice(0, 10) || '—'} />
-              <InfoRow label="Người phụ trách" value={vehicle.managerFullName || '—'} />
-              <InfoRow label="Điện thoại" value={vehicle.managerPhone || '—'} />
+              <InfoRow label="Hạn đăng kiểm" value={formatDate(vehicle.registrationExpiry)} />
+              <ManagerContact
+                layout="rows"
+                label="Người phụ trách"
+                name={vehicle.managerFullName}
+                phone={vehicle.managerPhone}
+              />
             </View>
             {(can(permissions.catalogVehiclesUpdate) || can(permissions.catalogVehiclesDelete)) ? (
-              <View style={styles.actions}>
+              <View className="mt-[13px] flex-row flex-wrap justify-end gap-2">
                 {can(permissions.catalogVehiclesUpdate) ? (
                   <AppButton compact tone="secondary" label="Sửa" onPress={() => openEdit(vehicle)} />
                 ) : null}
@@ -354,6 +376,7 @@ export function VehiclesScreen() {
           <FormField
             label="Biển số xe *"
             placeholder="26C-123.45"
+            schema={requiredTextSchema}
             value={draft.licensePlate}
             editable={!editing && !saving}
             autoCapitalize="characters"
@@ -362,6 +385,7 @@ export function VehiclesScreen() {
           />
           <OptionPicker
             label="Loại xe *"
+            schema={requiredTextSchema}
             value={draft.vehicleTypeId}
             options={vehicleTypeOptions}
             disabled={saving || referencesQuery.isLoading}
@@ -370,6 +394,7 @@ export function VehiclesScreen() {
           <FormField
             label="Tải trọng (tấn)"
             placeholder="15"
+            schema={optionalPayloadSchema}
             value={draft.payloadCapacityTons}
             editable={!saving}
             keyboardType="decimal-pad"
@@ -392,12 +417,15 @@ export function VehiclesScreen() {
           />
           <FormField
             label="Hạn đăng kiểm"
-            hint="Định dạng YYYY-MM-DD"
-            placeholder="2027-12-31"
-            value={draft.registrationExpiry}
+            hint="Định dạng dd-mm-yyyy"
+            placeholder="31-12-2027"
+            schema={optionalDisplayDateSchema}
+            value={draft.registrationExpiry ? formatDate(draft.registrationExpiry) : ''}
             editable={!saving}
             maxLength={10}
-            onChangeText={registrationExpiry => setDraft(current => ({ ...current, registrationExpiry }))}
+            onChangeText={registrationExpiry =>
+              setDraft(current => ({ ...current, registrationExpiry: displayDateToIso(registrationExpiry) }))
+            }
           />
           <OptionPicker
             label="Quản lý xe"
@@ -420,7 +448,6 @@ export function VehiclesScreen() {
     </>
   );
 }
-
 export function AdministrativeUnitsScreen() {
   const { can } = useAuth();
   const queryClient = useQueryClient();
@@ -479,12 +506,12 @@ export function AdministrativeUnitsScreen() {
   };
 
   const save = async () => {
+    const validation = (kind === 'communes'
+      ? administrativeDraftSchema
+      : administrativeDraftSchema.omit({ provinceCode: true })).safeParse(draft);
+    if (!validation.success) return;
     const code = draft.code.trim();
     const name = draft.name.trim();
-    if ((!editing && !code) || !name || (kind === 'communes' && !draft.provinceCode)) {
-      Alert.alert('Thiếu thông tin', `Nhập đầy đủ mã, tên ${kind === 'provinces' ? 'tỉnh/thành phố' : 'xã/phường'}${kind === 'communes' ? ' và chọn tỉnh' : ''}.`);
-      return;
-    }
     setSaving(true);
     try {
       if (editing) {
@@ -555,7 +582,7 @@ export function AdministrativeUnitsScreen() {
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
-        <View style={styles.toolbar}>
+        <View className="flex-row flex-wrap items-center justify-between gap-2.5">
           <ChoiceChips
             value={kind}
             options={[
@@ -572,8 +599,8 @@ export function AdministrativeUnitsScreen() {
             <AppButton compact tone="secondary" label="Đồng bộ" loading={saving} onPress={sync} />
           ) : null}
         </View>
-        <View style={styles.compactToolbar}>
-          <View style={styles.compactSearch}>
+        <View className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">
             <SearchField
               placeholder={kind === 'provinces' ? 'Tìm tỉnh/thành phố...' : 'Tìm xã/phường...'}
               value={searchInput}
@@ -587,14 +614,14 @@ export function AdministrativeUnitsScreen() {
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có đơn vị hành chính phù hợp." /> : null}
         {query.data?.data.length ? (
-          <Card style={styles.compactTable}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, styles.adminCodeColumn]}>Mã</Text>
-              <Text style={[styles.tableHeaderText, styles.adminNameColumn]}>
+          <Card padded={false} className="-mx-page-x overflow-hidden">
+            <View className="min-h-[38px] flex-row items-center gap-2 border-b border-border bg-surface-muted px-2.5">
+              <Text className="min-w-0 flex-[0.7] text-caption font-semibold text-content-muted">Mã</Text>
+              <Text className="min-w-0 flex-[1.45] text-caption font-semibold text-content-muted">
                 {kind === 'provinces' ? 'Tỉnh/Thành phố' : 'Xã/Phường'}
               </Text>
-              <Text style={[styles.tableHeaderText, styles.adminStatusColumn]}>Trạng thái</Text>
-              <View style={styles.actionColumn} />
+              <Text className="w-[58px] shrink-0 text-caption font-semibold text-content-muted">Trạng thái</Text>
+              <View className="w-[34px] shrink-0 items-end" />
             </View>
             {query.data.data.map((record, index) => {
               const recordName = kind === 'provinces' ? record.provinceName : record.communeName ?? '—';
@@ -605,20 +632,20 @@ export function AdministrativeUnitsScreen() {
               return (
                 <View
                   key={record.id}
-                  style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+                  className={`min-h-[62px] flex-row items-center gap-2 px-2.5 ${index < query.data.data.length - 1 ? 'border-b border-border' : ''}`}
                 >
-                  <Text numberOfLines={2} style={[styles.tableCode, styles.adminCodeColumn]}>{recordCode}</Text>
-                  <View style={styles.adminNameColumn}>
-                    <Text numberOfLines={2} style={styles.tableName}>{recordName}</Text>
-                    {metadata ? <Text numberOfLines={1} style={styles.tableMeta}>{metadata}</Text> : null}
+                  <Text numberOfLines={2} className="min-w-0 flex-[0.7] text-xs font-bold text-primary-dark">{recordCode}</Text>
+                  <View className="min-w-0 flex-[1.45]">
+                    <Text numberOfLines={2} className="text-body font-semibold text-content">{recordName}</Text>
+                    {metadata ? <Text numberOfLines={1} className="mt-0.5 text-caption text-content-muted">{metadata}</Text> : null}
                   </View>
-                  <View style={styles.adminStatusColumn}>
+                  <View className="w-[58px] shrink-0">
                     <StatusBadge
                       label={record.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
                       tone={record.status === 'ACTIVE' ? 'success' : 'neutral'}
                     />
                   </View>
-                  <View style={styles.actionColumn}>
+                  <View className="w-[34px] shrink-0 items-end">
                     {can(permissions.catalogAdministrativeUnitsUpdate) || can(permissions.catalogAdministrativeUnitsDelete) ? (
                       <ActionMenu
                         label={`Thao tác với ${recordName}`}
@@ -650,6 +677,7 @@ export function AdministrativeUnitsScreen() {
         >
           <FormField
             label={`Mã ${kind === 'provinces' ? 'tỉnh' : 'xã'} *`}
+            schema={requiredTextSchema}
             value={draft.code}
             editable={!editing && !saving}
             autoCapitalize="characters"
@@ -659,6 +687,7 @@ export function AdministrativeUnitsScreen() {
           {kind === 'communes' ? (
             <OptionPicker
               label="Tỉnh/Thành phố *"
+              schema={requiredTextSchema}
               value={draft.provinceCode}
               options={provinceOptions}
               disabled={Boolean(editing) || saving || provincesQuery.isLoading}
@@ -667,6 +696,7 @@ export function AdministrativeUnitsScreen() {
           ) : null}
           <FormField
             label={`Tên ${kind === 'provinces' ? 'tỉnh/thành phố' : 'xã/phường'} *`}
+            schema={requiredTextSchema}
             value={draft.name}
             editable={!saving}
             maxLength={200}
@@ -684,38 +714,3 @@ export function AdministrativeUnitsScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 },
-  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  compactSearch: { flex: 1, minWidth: 0 },
-  compactTable: { padding: 0, overflow: 'hidden' },
-  tableHeader: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceMuted,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
-  tableRow: { minHeight: 62, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  adminCodeColumn: { flex: 0.7, minWidth: 0 },
-  adminNameColumn: { flex: 1.45, minWidth: 0 },
-  adminStatusColumn: { width: 58, flexShrink: 0 },
-  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
-  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  tableMeta: { color: colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 2 },
-  heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: ui.gap },
-  titleWrap: { flex: 1 },
-  title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  plate: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: '700', letterSpacing: 0.5 },
-  code: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  rows: { marginTop: 10 },
-  actions: { marginTop: 13, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
-});

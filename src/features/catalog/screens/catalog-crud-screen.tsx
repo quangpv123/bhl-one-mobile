@@ -1,19 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, Text, View } from 'react-native';
+import { z } from 'zod';
 
+import { FormField, ManagementSheet } from '@/components/forms/management-form';
 import { Screen } from '@/components/screen';
 import {
   ActionMenu,
@@ -29,8 +19,14 @@ import {
 } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { CatalogRecord, PaginatedResponse } from '@/types/business';
+import { requiredTextSchema } from '@/lib/validation';
+
+const catalogEditorSchema = z.object({
+  code: requiredTextSchema,
+  name: requiredTextSchema,
+  status: z.enum(['ACTIVE', 'INACTIVE']),
+});
 
 export interface CatalogCrudDescriptor {
   key: string;
@@ -95,19 +91,16 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
   const closeEditor = () => setEditing(undefined);
 
   const save = async () => {
-    const code = draft.code.trim();
-    const name = draft.name.trim();
-    if ((!editing && !code) || !name) {
-      Alert.alert('Thiếu thông tin', `Nhập đủ ${descriptor.codeLabel.toLocaleLowerCase('vi-VN')} và ${descriptor.nameLabel.toLocaleLowerCase('vi-VN')}.`);
-      return;
-    }
+    const validation = catalogEditorSchema.safeParse(draft);
+    if (!validation.success) return;
+    const values = validation.data;
     setSaving(true);
     try {
       const payload: Record<string, string> = {
-        [descriptor.nameField]: name,
-        status: draft.status,
+        [descriptor.nameField]: values.name,
+        status: values.status,
       };
-      if (!editing) payload[descriptor.codeField] = code;
+      if (!editing) payload[descriptor.codeField] = values.code;
       if (editing) await api.patch(`${descriptor.endpoint}/${editing.id}`, payload);
       else await api.post(descriptor.endpoint, payload);
       await queryClient.invalidateQueries({ queryKey: ['catalog-mobile', descriptor.key] });
@@ -146,8 +139,8 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
         action={!isCompactCatalog && canCreate ? <AppButton compact label="Thêm" onPress={openCreate} /> : undefined}
       >
         {isCompactCatalog ? (
-          <View style={styles.compactToolbar}>
-            <View style={styles.compactSearch}>
+          <View className="flex-row items-center gap-2">
+            <View className="min-w-0 flex-1">
               <SearchField
                 placeholder={`Tìm ${descriptor.singular}...`}
                 value={searchInput}
@@ -171,31 +164,31 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
           <EmptyState text={`Chưa có ${descriptor.singular} nào.`} />
         ) : null}
         {isCompactCatalog && query.data?.data.length ? (
-          <Card style={styles.compactTable}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
-              <Text style={[styles.tableHeaderText, styles.nameColumn]}>{descriptor.nameLabel}</Text>
-              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
-              <View style={styles.actionColumn} />
+          <Card padded={false} className="-mx-page-x overflow-hidden">
+            <View className="min-h-[38px] flex-row items-center gap-2 border-b border-border bg-surface-muted px-2.5">
+              <Text className="min-w-0 flex-[0.8] text-caption font-semibold text-content-muted">Mã</Text>
+              <Text className="min-w-0 flex-[1.35] text-caption font-semibold text-content-muted">{descriptor.nameLabel}</Text>
+              <Text className="w-[82px] shrink-0 text-caption font-semibold text-content-muted">Trạng thái</Text>
+              <View className="w-[34px] shrink-0 items-end" />
             </View>
             {query.data.data.map((record, index) => (
               <View
                 key={record.id}
-                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+                className={`min-h-[58px] flex-row items-center gap-2 px-2.5 ${index < query.data.data.length - 1 ? 'border-b border-border' : ''}`}
               >
-                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>
+                <Text numberOfLines={2} className="min-w-0 flex-[0.8] text-xs font-bold text-primary-dark">
                   {String(record[descriptor.codeField] ?? '—')}
                 </Text>
-                <Text numberOfLines={2} style={[styles.tableName, styles.nameColumn]}>
+                <Text numberOfLines={2} className="min-w-0 flex-[1.35] text-body font-semibold text-content">
                   {String(record[descriptor.nameField] ?? '—')}
                 </Text>
-                <View style={styles.statusColumn}>
+                <View className="w-[82px] shrink-0">
                   <StatusBadge
                     label={record.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm dừng'}
                     tone={record.status === 'ACTIVE' ? 'success' : 'neutral'}
                   />
                 </View>
-                <View style={styles.actionColumn}>
+                <View className="w-[34px] shrink-0 items-end">
                   {canUpdate || canDelete ? (
                     <ActionMenu
                       label={`Thao tác với ${String(record[descriptor.nameField] ?? descriptor.singular)}`}
@@ -212,10 +205,10 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
         ) : null}
         {!isCompactCatalog ? query.data?.data.map(record => (
           <Card key={record.id}>
-            <View style={styles.cardHeading}>
-              <View style={styles.cardTitleWrap}>
-                <Text style={styles.cardTitle}>{String(record[descriptor.nameField] ?? '—')}</Text>
-                <Text style={styles.cardCode}>{String(record[descriptor.codeField] ?? '—')}</Text>
+            <View className="flex-row items-start justify-between gap-3">
+              <View className="flex-1">
+                <Text className="text-[15px] leading-[21px] font-bold text-content">{String(record[descriptor.nameField] ?? '—')}</Text>
+                <Text className="mt-[5px] text-body font-bold text-primary-dark">{String(record[descriptor.codeField] ?? '—')}</Text>
               </View>
               <StatusBadge
                 label={record.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm dừng'}
@@ -223,7 +216,7 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
               />
             </View>
             {(canUpdate || canDelete) && (
-              <View style={styles.actions}>
+              <View className="mt-3.5 flex-row justify-end gap-2">
                 {canUpdate ? <AppButton compact tone="secondary" label="Chỉnh sửa" onPress={() => openEdit(record)} /> : null}
                 {canDelete ? <AppButton compact tone="danger-outline" label="Xóa" onPress={() => remove(record)} /> : null}
               </View>
@@ -231,39 +224,35 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
           </Card>
         )) : null}
         {query.data?.pagination ? (
-          <Text style={styles.total}>Tổng {query.data.pagination.total.toLocaleString('vi-VN')} bản ghi</Text>
+          <Text className="py-2 text-center text-xs text-content-muted">Tổng {query.data.pagination.total.toLocaleString('vi-VN')} bản ghi</Text>
         ) : null}
       </Screen>
 
-      <Modal visible={editing !== undefined} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeEditor}>
-        <SafeAreaView style={styles.modalSafeArea}>
-          <KeyboardAvoidingView style={styles.modalPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.modalHeader}>
-              <Pressable onPress={closeEditor}><Text style={styles.cancel}>Hủy</Text></Pressable>
-              <Text style={styles.modalTitle}>{editing ? `Sửa ${descriptor.singular}` : `Thêm ${descriptor.singular}`}</Text>
-              <Pressable disabled={saving} onPress={() => void save()}><Text style={styles.save}>Lưu</Text></Pressable>
-            </View>
-            <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>{descriptor.codeLabel}</Text>
-              <TextInput
+      {editing !== undefined ? (
+        <ManagementSheet
+          title={editing ? `Sửa ${descriptor.singular}` : `Thêm ${descriptor.singular}`}
+          saving={saving}
+          onClose={closeEditor}
+          onSave={() => void save()}
+        >
+              <FormField
+                label={`${descriptor.codeLabel} *`}
+                schema={requiredTextSchema}
                 autoCapitalize="characters"
                 editable={!editing && !saving}
                 placeholder={descriptor.codeLabel}
-                placeholderTextColor={colors.textPlaceholder}
                 value={draft.code}
                 onChangeText={code => setDraft(current => ({ ...current, code }))}
-                style={[styles.input, Boolean(editing) && styles.inputDisabled]}
               />
-              <Text style={styles.label}>{descriptor.nameLabel}</Text>
-              <TextInput
+              <FormField
+                label={`${descriptor.nameLabel} *`}
+                schema={requiredTextSchema}
                 editable={!saving}
                 placeholder={descriptor.nameLabel}
-                placeholderTextColor={colors.textPlaceholder}
                 value={draft.name}
                 onChangeText={name => setDraft(current => ({ ...current, name }))}
-                style={styles.input}
               />
-              <Text style={styles.label}>Trạng thái</Text>
+              <Text className="mt-1 text-body font-semibold text-content">Trạng thái</Text>
               <ChoiceChips
                 value={draft.status}
                 options={[
@@ -275,53 +264,9 @@ export function CatalogCrudScreen({ descriptor }: { descriptor: CatalogCrudDescr
               <Card tone="soft">
                 <InfoRow label="Thao tác" value={editing ? 'Cập nhật bản ghi hiện tại' : 'Tạo bản ghi mới'} />
               </Card>
-              <AppButton label="Lưu thay đổi" loading={saving} onPress={() => void save()} />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+        </ManagementSheet>
+      ) : null}
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  compactSearch: { flex: 1, minWidth: 0 },
-  compactTable: { padding: 0, overflow: 'hidden' },
-  tableHeader: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceMuted,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
-  tableRow: { minHeight: 58, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  codeColumn: { flex: 0.8, minWidth: 0 },
-  nameColumn: { flex: 1.35, minWidth: 0 },
-  statusColumn: { width: 82, flexShrink: 0 },
-  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
-  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  cardHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  cardTitleWrap: { flex: 1 },
-  cardTitle: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  cardCode: { color: colors.primaryDark, fontSize: 13, fontWeight: '700', marginTop: 5 },
-  actions: { marginTop: 14, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
-  total: { color: colors.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 8 },
-  modalSafeArea: { flex: 1, backgroundColor: colors.background },
-  modalPage: { flex: 1 },
-  modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  form: { padding: 12, gap: 10 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '600', marginTop: 4 },
-  input: { minHeight: ui.controlHeight, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, color: colors.text },
-  inputDisabled: { backgroundColor: colors.surfaceMuted, color: colors.textMuted },
-});
 

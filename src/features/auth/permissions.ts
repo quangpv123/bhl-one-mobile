@@ -75,6 +75,7 @@ export const permissions = {
   transportTripsCreate: 'transport-trips.create',
   transportTripsOperate: 'transport-trips.operate',
   transportTripsCancel: 'transport-trips.cancel',
+  transportTripsDelete: 'transport-trips.delete',
   transportSettlementsView: 'transport-settlements.view',
   systemBotsConfigure: 'system-bots.configure',
   toolsLicensePlateAiUse: 'tools.license-plate-ai.use',

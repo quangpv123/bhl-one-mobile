@@ -1,9 +1,10 @@
 import { DateTimePicker as ExpoDateTimePicker } from '@expo/ui/community/datetime-picker';
 import { useState, type CSSProperties } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui';
-import { colors, typography, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
+import { isoDateSchema } from '@/lib/validation';
 
 type DateFieldKey = 'from' | 'to';
 
@@ -28,38 +29,40 @@ function isoDate(value: Date) {
 }
 
 function displayDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  return `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}`;
+  if (!isoDateSchema.safeParse(value).success) return value;
+  return `${value.slice(8, 10)}-${value.slice(5, 7)}-${value.slice(0, 4)}`;
 }
 
 function NativeDateField({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+    <View className="flex-1 gap-[7px]">
+      <Text className="text-label font-semibold text-content">{label}</Text>
       <Pressable
         accessibilityLabel={`${label}: ${displayDate(value)}`}
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [styles.input, pressed && styles.inputPressed]}
+        className="h-control flex-row items-center gap-1.5 rounded-control border px-2.5"
+        style={({ pressed }) => ({
+          borderColor: pressed ? colors.primaryBorder : colors.border,
+          backgroundColor: pressed ? colors.primarySoft : colors.surface,
+        })}
       >
-        <Text numberOfLines={1} style={styles.value}>{displayDate(value)}</Text>
-        <Text style={styles.calendarIcon}>▦</Text>
+        <Text numberOfLines={1} className="flex-1 text-label text-content">{displayDate(value)}</Text>
+        <Text className="text-[15px] font-bold text-primary">▦</Text>
       </Pressable>
     </View>
   );
 }
 
 const webInputStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
   width: '100%',
-  minWidth: 0,
-  height: ui.controlHeight - 2,
-  padding: '0 10px',
+  height: '100%',
+  padding: 0,
   border: 0,
   outline: 0,
-  background: 'transparent',
-  color: colors.text,
-  fontFamily: 'inherit',
-  fontSize: 13,
+  opacity: 0,
   cursor: 'pointer',
 };
 
@@ -75,9 +78,13 @@ function WebDateField({
   onChange: (value: string) => void;
 }) {
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.webInputWrap}>
+    <View className="flex-1 gap-[7px]">
+      <Text className="text-label font-semibold text-content">{label}</Text>
+      <View className="relative h-control flex-row items-center gap-1.5 overflow-hidden rounded-control border border-border bg-surface px-2.5">
+        <Text pointerEvents="none" numberOfLines={1} className="flex-1 text-label text-content">
+          {displayDate(value)}
+        </Text>
+        <Text pointerEvents="none" className="text-[15px] font-bold text-primary">▦</Text>
         <input
           aria-label={label}
           max={maximumDate}
@@ -102,7 +109,7 @@ export function DateRangeFields({
 
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.row}>
+      <View className="flex-row items-end gap-2">
         <WebDateField label="Từ ngày" maximumDate={maximumDate} value={fromDate} onChange={onFromDateChange} />
         <WebDateField label="Đến ngày" maximumDate={maximumDate} value={toDate} onChange={onToDateChange} />
       </View>
@@ -119,7 +126,7 @@ export function DateRangeFields({
 
   return (
     <>
-      <View style={styles.row}>
+      <View className="flex-row items-end gap-2">
         <NativeDateField label="Từ ngày" value={fromDate} onPress={() => setActiveField('from')} />
         <NativeDateField label="Đến ngày" value={toDate} onPress={() => setActiveField('to')} />
       </View>
@@ -128,6 +135,7 @@ export function DateRangeFields({
         <ExpoDateTimePicker
           value={parseIsoDate(activeDate)}
           mode="date"
+          display="spinner"
           presentation="dialog"
           maximumDate={parseIsoDate(maximumDate)}
           positiveButton={{ label: 'Chọn' }}
@@ -139,17 +147,17 @@ export function DateRangeFields({
 
       {activeField && Platform.OS === 'ios' ? (
         <Modal transparent animationType="fade" onRequestClose={() => setActiveField(undefined)}>
-          <View style={styles.overlay}>
-            <View style={styles.pickerCard}>
-              <Text style={styles.pickerTitle}>
+          <View className="flex-1 items-center justify-center bg-[rgba(15,23,42,0.48)] p-[18px]">
+            <View className="w-full max-w-[390px] gap-3 rounded-card bg-surface p-3.5">
+              <Text className="text-center text-card font-bold text-content">
                 {activeField === 'from' ? 'Chọn ngày bắt đầu' : 'Chọn ngày kết thúc'}
               </Text>
               <ExpoDateTimePicker
                 value={parseIsoDate(activeDate)}
                 mode="date"
-                display="inline"
+                display="spinner"
                 maximumDate={parseIsoDate(maximumDate)}
-                locale="vi_VN"
+                locale="en_GB"
                 accentColor={colors.primary}
                 onValueChange={(_, date) => selectDate(date)}
               />
@@ -161,47 +169,3 @@ export function DateRangeFields({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  field: { flex: 1, gap: 7 },
-  label: { color: colors.text, ...typography.label },
-  input: {
-    minHeight: ui.controlHeight,
-    paddingHorizontal: 10,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  inputPressed: { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft },
-  value: { flex: 1, color: colors.text, fontSize: 12 },
-  calendarIcon: { color: colors.primary, fontSize: 15, fontWeight: '700' },
-  webInputWrap: {
-    minHeight: ui.controlHeight,
-    overflow: 'hidden',
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  overlay: {
-    flex: 1,
-    padding: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.48)',
-  },
-  pickerCard: {
-    width: '100%',
-    maxWidth: 390,
-    padding: 14,
-    borderRadius: ui.cardRadius,
-    backgroundColor: colors.surface,
-    gap: 12,
-  },
-  pickerTitle: { color: colors.text, ...typography.cardTitle, textAlign: 'center' },
-});

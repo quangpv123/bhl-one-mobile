@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -7,22 +8,23 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { z } from 'zod';
 
-import { Screen } from '@/components/screen';
-import { AppButton, ChoiceChips, EmptyState, ErrorState, LoadingBlock, SearchField, StatusBadge } from '@/components/ui';
+import { AppIcon } from '@/components/app-icon';
+import { ChoiceChips, EmptyState, ErrorState, LoadingBlock, SearchField, StatusBadge } from '@/components/ui';
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { ManagementSheet, OptionPicker } from '@/components/forms/management-form';
 import { api, getApiErrorMessage } from '@/services/api';
 import { createMessagingSocket } from '@/services/messaging-socket';
-import { colors, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type {
   MessageConversation,
@@ -33,14 +35,50 @@ import type {
   SystemBotSettings,
   SystemBotSummary,
 } from '@/types/models';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatTime } from '@/utils/format';
 
 function conversationName(item: MessageConversation) {
   return item.groupName || item.otherFullName || 'Cuộc trò chuyện';
 }
 
+function initials(value: string) {
+  return value
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || 'BHL';
+}
+
+function ConversationAvatar({ name, type = 'DIRECT', size = 48 }: { name: string; type?: MessageConversation['conversationType']; size?: number }) {
+  const backgroundColor = type === 'SYSTEM' ? '#7C3AED' : type === 'GROUP' ? colors.primaryDark : colors.primary;
+  return (
+    <View
+      className="shrink-0 items-center justify-center rounded-full"
+      style={{ width: size, height: size, backgroundColor }}
+    >
+      <Text className="font-bold text-white" style={{ fontSize: Math.max(13, Math.round(size * 0.31)) }}>
+        {type === 'SYSTEM' ? 'BHL' : initials(name)}
+      </Text>
+    </View>
+  );
+}
+
+function conversationTime(value: string) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return '';
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - time) / 60_000));
+  if (elapsedMinutes < 1) return 'Vừa xong';
+  if (elapsedMinutes < 60) return `${elapsedMinutes} phút`;
+  if (elapsedMinutes < 24 * 60) return `${Math.floor(elapsedMinutes / 60)} giờ`;
+  return formatDateTime(value).slice(0, 10);
+}
+const groupNameSchema = z.string().trim().min(2, 'Tên nhóm phải có ít nhất 2 ký tự.');
+const recipientSelectionSchema = z.array(z.string()).min(1, 'Chọn ít nhất một người nhận.');
+const botSelectionSchema = z.string().min(1, 'Chọn một bot hệ thống.');
+
 export default function MessagesScreen() {
-  const { token, can } = useAuth();
+  const { token, user, can } = useAuth();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -48,6 +86,7 @@ export default function MessagesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchScope, setSearchScope] = useState<MessageSearchScope>('ALL');
   const [openingSearchResultId, setOpeningSearchResultId] = useState<string>();
+  const [deletingConversationId, setDeletingConversationId] = useState<string>();
   const conversations = useQuery({
     queryKey: ['conversations'],
     queryFn: async () => (await api.get<ApiResponse<MessageConversation[]>>('/messages/conversations')).data.data,
@@ -88,6 +127,7 @@ export default function MessagesScreen() {
         id,
         title: conversation ? conversationName(conversation) : fallbackTitle,
         type: conversation?.conversationType ?? fallbackType,
+        unreadCount: String(conversation?.unreadCount ?? 0),
       },
     });
   };
@@ -112,6 +152,34 @@ export default function MessagesScreen() {
     }
   };
 
+  const confirmDeleteConversation = (conversation: MessageConversation) => {
+    if (user?.role !== 'ADMIN' || deletingConversationId) return;
+    Alert.alert(
+      'Xóa cuộc trò chuyện?',
+      `Toàn bộ tin nhắn và ảnh trong “${conversationName(conversation)}” sẽ bị xóa vĩnh viễn.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: () => {
+            setDeletingConversationId(conversation.id);
+            void api
+              .delete(`/messages/conversations/${conversation.id}`)
+              .then(async () => {
+                queryClient.setQueryData<MessageConversation[]>(['conversations'], current =>
+                  current?.filter(item => item.id !== conversation.id),
+                );
+                await queryClient.invalidateQueries({ queryKey: ['message-global-search-mobile'] });
+              })
+              .catch(error => Alert.alert('Không thể xóa cuộc trò chuyện', getApiErrorMessage(error)))
+              .finally(() => setDeletingConversationId(undefined));
+          },
+        },
+      ],
+    );
+  };
+
   const isSearching = Boolean(searchInput.trim());
   const searchReady = searchQuery === searchInput.trim();
   const showPeople = searchScope === 'ALL' || searchScope === 'PEOPLE';
@@ -125,39 +193,85 @@ export default function MessagesScreen() {
 
   return (
     <>
-      <Screen
-        title="Tin nhắn"
-        subtitle="Trao đổi và thông báo hệ thống"
-        action={
-          <View style={styles.headerActions}>
-            {can(permissions.systemBotsConfigure) ? (
-              <AppButton compact tone="secondary" label="Cấu hình bot" onPress={() => setSettingsOpen(true)} />
-            ) : null}
-            <AppButton compact label="Tin mới" onPress={() => setCreateOpen(true)} />
+      <StatusBar style="light" />
+      <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
+        <View className="h-[58px] flex-row items-center gap-2 bg-primary px-2.5">
+          <Pressable
+            accessibilityLabel="Mở menu chức năng"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => router.push('/(app)/work')}
+            className="h-10 w-10 items-center justify-center rounded-full"
+            style={({ pressed }) => ({ backgroundColor: pressed ? 'rgba(255,255,255,0.16)' : 'transparent' })}
+          >
+            <AppIcon name="apps" color="#FFFFFF" size={23} />
+          </Pressable>
+          <View className="h-10 min-w-0 flex-1 flex-row items-center rounded-full bg-[rgba(255,255,255,0.16)] px-3">
+            <AppIcon name="search" color="rgba(255,255,255,0.88)" size={20} />
+            <TextInput
+              accessibilityLabel="Tìm kiếm tin nhắn"
+              placeholder="Tìm kiếm"
+              placeholderTextColor="rgba(255,255,255,0.72)"
+              className="h-10 min-w-0 flex-1 px-2.5 py-0 text-[15px] text-white"
+              style={{ textAlignVertical: 'center', includeFontPadding: false }}
+              value={searchInput}
+              onChangeText={value => {
+                setSearchInput(value);
+                if (!value.trim()) setSearchScope('ALL');
+              }}
+            />
           </View>
-        }
-        refreshing={conversations.isRefetching}
-        onRefresh={() => void conversations.refetch()}
-      >
-        <SearchField
-          placeholder="Tìm kiếm"
-          value={searchInput}
-          onChangeText={value => {
-            setSearchInput(value);
-            if (!value.trim()) setSearchScope('ALL');
-          }}
-        />
+          {can(permissions.systemBotsConfigure) ? (
+            <Pressable
+              accessibilityLabel="Cấu hình bot"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => setSettingsOpen(true)}
+              className="h-10 w-10 items-center justify-center rounded-full"
+              style={({ pressed }) => ({ backgroundColor: pressed ? 'rgba(255,255,255,0.16)' : 'transparent' })}
+            >
+              <AppIcon name="settings" color="#FFFFFF" size={23} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityLabel="Tạo tin nhắn mới"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => setCreateOpen(true)}
+            className="h-10 w-10 items-center justify-center rounded-full"
+            style={({ pressed }) => ({ backgroundColor: pressed ? 'rgba(255,255,255,0.16)' : 'transparent' })}
+          >
+            <Text className="text-[30px] font-light leading-[34px] text-white">＋</Text>
+          </Pressable>
+        </View>
+
+        <SafeAreaView className="flex-1 bg-surface" edges={['right', 'bottom', 'left']}>
+          <ScrollView
+            className="flex-1 bg-surface"
+            contentContainerClassName="pb-3"
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                colors={[colors.primary]}
+                tintColor={colors.primary}
+                refreshing={conversations.isRefetching}
+                onRefresh={() => void conversations.refetch()}
+              />
+            }
+          >
         {isSearching ? (
-          <ChoiceChips
-            value={searchScope}
-            options={[
-              { value: 'ALL', label: 'Tất cả' },
-              { value: 'PEOPLE', label: 'Mọi người' },
-              { value: 'MESSAGES', label: 'Tin nhắn' },
-              { value: 'GROUPS', label: 'Nhóm' },
-            ]}
-            onChange={setSearchScope}
-          />
+          <View className="border-b border-border-subtle px-3 py-2">
+            <ChoiceChips
+              value={searchScope}
+              options={[
+                { value: 'ALL', label: 'Tất cả' },
+                { value: 'PEOPLE', label: 'Mọi người' },
+                { value: 'MESSAGES', label: 'Tin nhắn' },
+                { value: 'GROUPS', label: 'Nhóm' },
+              ]}
+              onChange={setSearchScope}
+            />
+          </View>
         ) : null}
 
         {isSearching && (searchResults.isLoading || !searchReady) ? <LoadingBlock /> : null}
@@ -168,62 +282,65 @@ export default function MessagesScreen() {
           <EmptyState text="Không tìm thấy kết quả." />
         ) : null}
         {isSearching && searchReady && showPeople && searchResults.data?.people.length ? (
-          <View style={styles.searchSection}>
-            <Text style={styles.searchSectionTitle}>Mọi người</Text>
+          <View>
+            <Text className="bg-surface-muted px-3 py-2 text-xs font-bold uppercase text-content-muted">Mọi người</Text>
             {searchResults.data.people.map(person => (
               <Pressable
                 key={person.id}
                 disabled={Boolean(openingSearchResultId)}
                 onPress={() => void openPerson(person)}
-                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+                className="min-h-[72px] flex-row items-center gap-3 bg-surface px-3"
+                style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
               >
-                <View style={styles.smallAvatar}><Text style={styles.smallAvatarText}>{person.fullName.charAt(0)}</Text></View>
-                <View style={styles.searchResultBody}>
-                  <Text style={styles.recipientName}>{person.fullName}</Text>
-                  <Text style={styles.recipientMeta}>@{person.username}{person.phone ? ` · ${person.phone}` : ''}</Text>
+                <ConversationAvatar name={person.fullName} size={48} />
+                <View className="min-w-0 flex-1 self-stretch justify-center border-b border-border-subtle py-2.5">
+                  <Text className="text-[16px] font-semibold text-content">{person.fullName}</Text>
+                  <Text className="mt-0.5 text-body text-content-muted">@{person.username}{person.phone ? ` · ${person.phone}` : ''}</Text>
                 </View>
-                {openingSearchResultId === person.id ? <Text style={styles.openingText}>Đang mở…</Text> : null}
+                {openingSearchResultId === person.id ? <Text className="text-caption font-bold text-primary">Đang mở…</Text> : null}
               </Pressable>
             ))}
           </View>
         ) : null}
         {isSearching && searchReady && showMessages && searchResults.data?.messages.length ? (
-          <View style={styles.searchSection}>
-            <Text style={styles.searchSectionTitle}>Tin nhắn</Text>
+          <View>
+            <Text className="bg-surface-muted px-3 py-2 text-xs font-bold uppercase text-content-muted">Tin nhắn</Text>
             {searchResults.data.messages.map(message => (
               <Pressable
                 key={message.id}
                 onPress={() => openConversation(message.conversationId, message.conversationName)}
-                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+                className="min-h-[72px] flex-row items-center gap-3 bg-surface px-3"
+                style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
               >
-                <View style={[styles.smallAvatar, styles.messageAvatar]}><Text style={styles.smallAvatarText}>✉</Text></View>
-                <View style={styles.searchResultBody}>
-                  <View style={styles.searchResultHeading}>
-                    <Text numberOfLines={1} style={styles.recipientName}>{message.conversationName}</Text>
-                    <Text style={styles.time}>{formatDateTime(message.createdAt).slice(0, 5)}</Text>
+                <ConversationAvatar name={message.conversationName} size={48} />
+                <View className="min-w-0 flex-1 self-stretch justify-center border-b border-border-subtle py-2.5">
+                  <View className="flex-row items-center gap-2">
+                    <Text numberOfLines={1} className="flex-1 text-[16px] font-semibold text-content">{message.conversationName}</Text>
+                    <Text className="text-caption text-content-muted">{formatTime(message.createdAt)}</Text>
                   </View>
-                  <Text numberOfLines={2} style={styles.recipientMeta}>{message.senderFullName}: {message.content}</Text>
+                  <Text numberOfLines={1} className="mt-0.5 text-body text-content-muted">{message.senderFullName}: {message.content}</Text>
                 </View>
               </Pressable>
             ))}
           </View>
         ) : null}
         {isSearching && searchReady && showGroups && searchResults.data?.groups.length ? (
-          <View style={styles.searchSection}>
-            <Text style={styles.searchSectionTitle}>Nhóm</Text>
+          <View>
+            <Text className="bg-surface-muted px-3 py-2 text-xs font-bold uppercase text-content-muted">Nhóm</Text>
             {searchResults.data.groups.map(group => (
               <Pressable
                 key={group.conversationId}
                 onPress={() => openConversation(group.conversationId, group.name, 'GROUP')}
-                style={({ pressed }) => [styles.searchResult, pressed && styles.pressed]}
+                className="min-h-[72px] flex-row items-center gap-3 bg-surface px-3"
+                style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
               >
-                <View style={[styles.smallAvatar, styles.groupAvatar]}><Text style={styles.smallAvatarText}>●●</Text></View>
-                <View style={styles.searchResultBody}>
-                  <View style={styles.searchResultHeading}>
-                    <Text numberOfLines={1} style={styles.recipientName}>{group.name}</Text>
-                    {group.lastMessageAt ? <Text style={styles.time}>{formatDateTime(group.lastMessageAt).slice(0, 5)}</Text> : null}
+                <ConversationAvatar name={group.name} type="GROUP" size={48} />
+                <View className="min-w-0 flex-1 self-stretch justify-center border-b border-border-subtle py-2.5">
+                  <View className="flex-row items-center gap-2">
+                    <Text numberOfLines={1} className="flex-1 text-[16px] font-semibold text-content">{group.name}</Text>
+                    {group.lastMessageAt ? <Text className="text-caption text-content-muted">{formatTime(group.lastMessageAt)}</Text> : null}
                   </View>
-                  <Text numberOfLines={2} style={styles.recipientMeta}>{group.lastMessageContent || `${group.memberCount} thành viên`}</Text>
+                  <Text numberOfLines={1} className="mt-0.5 text-body text-content-muted">{group.lastMessageContent || `${group.memberCount} thành viên`}</Text>
                 </View>
               </Pressable>
             ))}
@@ -236,36 +353,61 @@ export default function MessagesScreen() {
         {!isSearching ? conversations.data?.map(item => (
           <Pressable
             key={item.id}
+            delayLongPress={450}
             onPress={() => router.push({
               pathname: '/chat/[id]',
-              params: { id: item.id, title: conversationName(item), type: item.conversationType },
+              params: {
+                id: item.id,
+                title: conversationName(item),
+                type: item.conversationType,
+                unreadCount: String(item.unreadCount),
+              },
             })}
-            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+            onLongPress={user?.role === 'ADMIN' ? () => confirmDeleteConversation(item) : undefined}
+            className="min-h-[80px] flex-row items-center gap-3 bg-surface px-3"
+            style={({ pressed }) => ({ backgroundColor: pressed ? '#F1F5F9' : '#FFFFFF' })}
           >
-            <View style={[styles.avatar, item.conversationType === 'SYSTEM' && styles.avatarSystem]}>
-              <Text style={styles.avatarText}>{item.conversationType === 'SYSTEM' ? '◈' : conversationName(item).charAt(0).toUpperCase()}</Text>
-            </View>
-            <View style={styles.body}>
-              <View style={styles.nameRow}>
-                <Text numberOfLines={1} style={styles.name}>{conversationName(item)}</Text>
-                {item.lastMessageAt ? <Text style={styles.time}>{formatDateTime(item.lastMessageAt).slice(0, 5)}</Text> : null}
+            <ConversationAvatar name={conversationName(item)} type={item.conversationType} size={52} />
+            <View className="min-w-0 flex-1 self-stretch justify-center border-b border-border-subtle py-3">
+              <View className="flex-row items-center gap-2">
+                <Text
+                  numberOfLines={1}
+                  className={`flex-1 text-[16px] text-content ${item.unreadCount ? 'font-bold' : 'font-semibold'}`}
+                >
+                  {conversationName(item)}
+                </Text>
+                {item.lastMessageAt ? (
+                  <Text className={`text-label ${item.unreadCount ? 'font-semibold text-primary' : 'text-content-muted'}`}>
+                    {conversationTime(item.lastMessageAt)}
+                  </Text>
+                ) : null}
               </View>
-              <Text numberOfLines={1} style={styles.preview}>{item.lastMessageContent || 'Chưa có tin nhắn'}</Text>
-              {item.conversationType === 'GROUP' ? <Text style={styles.meta}>{item.memberCount ?? 0} thành viên</Text> : null}
+              <View className="mt-1 flex-row items-center gap-2">
+                <Text
+                  numberOfLines={1}
+                  className={`min-w-0 flex-1 text-body ${item.unreadCount ? 'font-semibold text-content-secondary' : 'text-content-muted'}`}
+                >
+                  {item.lastMessageContent || (item.conversationType === 'GROUP' ? `${item.memberCount ?? 0} thành viên` : 'Chưa có tin nhắn')}
+                </Text>
+                {item.unreadCount ? (
+                  <View className="h-5 min-w-5 items-center justify-center rounded-full bg-[#E94B55] px-1.5">
+                    <Text className="text-[10px] font-bold text-white">{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
-            {item.unreadCount ? (
-              <View style={styles.badge}><Text style={styles.badgeText}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text></View>
-            ) : null}
           </Pressable>
         )) : null}
-      </Screen>
+          </ScrollView>
+        </SafeAreaView>
+      </SafeAreaView>
       {createOpen ? (
         <CreateConversationModal
           onClose={() => setCreateOpen(false)}
           onCreated={async (id, title, conversationType) => {
             setCreateOpen(false);
             await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-            router.push({ pathname: '/chat/[id]', params: { id, title, type: conversationType } });
+            router.push({ pathname: '/chat/[id]', params: { id, title, type: conversationType, unreadCount: '0' } });
           }}
         />
       ) : null}
@@ -273,7 +415,6 @@ export default function MessagesScreen() {
     </>
   );
 }
-
 function CreateConversationModal({
   onClose,
   onCreated,
@@ -287,6 +428,7 @@ function CreateConversationModal({
   const [selectedBotCode, setSelectedBotCode] = useState('');
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const recipients = useQuery({
     queryKey: ['message-recipients-mobile', search],
     enabled: mode !== 'bot',
@@ -309,11 +451,9 @@ function CreateConversationModal({
   };
 
   const create = async () => {
+    setValidationAttempted(true);
     if (mode === 'bot') {
-      if (!selectedBotCode) {
-        Alert.alert('Chưa chọn bot', 'Chọn một bot hệ thống để mở kênh thông báo.');
-        return;
-      }
+      if (!botSelectionSchema.safeParse(selectedBotCode).success) return;
       setSaving(true);
       try {
         const response = await api.post<ApiResponse<{ id: string }>>(`/messages/bots/${encodeURIComponent(selectedBotCode)}/conversation`);
@@ -326,14 +466,8 @@ function CreateConversationModal({
       }
       return;
     }
-    if (!selectedIds.length) {
-      Alert.alert('Chưa chọn người nhận', 'Chọn ít nhất một người để bắt đầu trò chuyện.');
-      return;
-    }
-    if (mode === 'group' && groupName.trim().length < 2) {
-      Alert.alert('Thiếu tên nhóm', 'Nhập tên nhóm có ít nhất 2 ký tự.');
-      return;
-    }
+    if (!recipientSelectionSchema.safeParse(selectedIds).success) return;
+    if (mode === 'group' && !groupNameSchema.safeParse(groupName).success) return;
     setSaving(true);
     try {
       const response = mode === 'direct'
@@ -355,16 +489,20 @@ function CreateConversationModal({
     }
   };
 
+  const groupNameInvalid = validationAttempted && !groupNameSchema.safeParse(groupName).success;
+  const recipientsInvalid = validationAttempted && mode !== 'bot' && !recipientSelectionSchema.safeParse(selectedIds).success;
+  const botInvalid = validationAttempted && mode === 'bot' && !botSelectionSchema.safeParse(selectedBotCode).success;
+
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalSafeArea}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.modalHeader}>
-            <Pressable onPress={onClose}><Text style={styles.cancel}>Hủy</Text></Pressable>
-            <Text style={styles.modalTitle}>Tin nhắn mới</Text>
-            <Pressable disabled={saving} onPress={() => void create()}><Text style={styles.save}>Tạo</Text></Pressable>
+      <SafeAreaView className="flex-1 bg-background">
+        <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View className="min-h-header flex-row items-center justify-between border-b border-border bg-surface px-3">
+            <Pressable onPress={onClose}><Text className="text-sm font-semibold text-content-muted">Hủy</Text></Pressable>
+            <Text className="text-base font-bold text-content">Tin nhắn mới</Text>
+            <Pressable disabled={saving} onPress={() => void create()}><Text className="text-sm font-semibold text-primary">Tạo</Text></Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerClassName="gap-3 p-3" keyboardShouldPersistTaps="handled">
             <ChoiceChips
               value={mode}
               options={[
@@ -372,7 +510,7 @@ function CreateConversationModal({
                 { value: 'group', label: 'Nhóm' },
                 { value: 'bot', label: 'Bot hệ thống' },
               ]}
-              onChange={value => { setMode(value); setSelectedIds([]); setSelectedBotCode(''); }}
+              onChange={value => { setMode(value); setSelectedIds([]); setSelectedBotCode(''); setValidationAttempted(false); }}
             />
             {mode === 'group' ? (
               <TextInput
@@ -380,10 +518,20 @@ function CreateConversationModal({
                 onChangeText={setGroupName}
                 placeholder="Tên nhóm trò chuyện"
                 placeholderTextColor={colors.textPlaceholder}
-                style={styles.input}
+                className={`h-control rounded-control border bg-surface px-3 py-0 text-content ${groupNameInvalid ? 'border-danger bg-danger-soft' : 'border-border'}`}
+                style={{ textAlignVertical: 'center', includeFontPadding: false }}
               />
             ) : null}
+            {mode === 'group' && groupNameInvalid ? (
+              <Text className="text-caption font-medium leading-[15px] text-danger">Tên nhóm phải có ít nhất 2 ký tự.</Text>
+            ) : null}
             {mode !== 'bot' ? <SearchField placeholder="Tìm theo tên, tài khoản..." value={search} onChangeText={setSearch} /> : null}
+            {recipientsInvalid ? (
+              <Text className="text-caption font-medium leading-[15px] text-danger">Chọn ít nhất một người nhận.</Text>
+            ) : null}
+            {botInvalid ? (
+              <Text className="text-caption font-medium leading-[15px] text-danger">Chọn một bot hệ thống.</Text>
+            ) : null}
             {mode !== 'bot' && recipients.isLoading ? <LoadingBlock /> : null}
             {mode !== 'bot' && recipients.isError ? <ErrorState text={getApiErrorMessage(recipients.error)} onRetry={() => void recipients.refetch()} /> : null}
             {mode !== 'bot' ? recipients.data?.map(recipient => {
@@ -392,12 +540,12 @@ function CreateConversationModal({
                 <Pressable
                   key={recipient.id}
                   onPress={() => toggleRecipient(recipient.id)}
-                  style={[styles.recipient, selected && styles.recipientSelected]}
+                  className={`min-h-[62px] flex-row items-center gap-2.5 rounded-control border p-2.5 ${selected ? 'border-primary-border bg-primary-soft' : 'border-border bg-surface'}`}
                 >
-                  <View style={styles.smallAvatar}><Text style={styles.smallAvatarText}>{recipient.fullName.charAt(0)}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recipientName}>{recipient.fullName}</Text>
-                    <Text style={styles.recipientMeta}>@{recipient.username} · {recipient.role}</Text>
+                  <View className="h-10 w-10 items-center justify-center rounded-[10px] bg-primary-soft"><Text className="font-bold text-primary-dark">{recipient.fullName.charAt(0)}</Text></View>
+                  <View className="flex-1">
+                    <Text className="font-bold text-content">{recipient.fullName}</Text>
+                    <Text className="mt-1 text-xs text-content-muted">@{recipient.username} · {recipient.role}</Text>
                   </View>
                   {selected ? <StatusBadge label="Đã chọn" tone="info" /> : null}
                 </Pressable>
@@ -411,29 +559,23 @@ function CreateConversationModal({
                 <Pressable
                   key={bot.botCode}
                   onPress={() => setSelectedBotCode(bot.botCode)}
-                  style={[styles.recipient, selected && styles.recipientSelected]}
+                  className={`min-h-[62px] flex-row items-center gap-2.5 rounded-control border p-2.5 ${selected ? 'border-primary-border bg-primary-soft' : 'border-border bg-surface'}`}
                 >
-                  <View style={[styles.smallAvatar, styles.botAvatar]}><Text style={styles.smallAvatarText}>◈</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recipientName}>{bot.botName}</Text>
-                    <Text style={styles.recipientMeta}>{bot.description}</Text>
+                  <View className="h-10 w-10 items-center justify-center rounded-[10px] bg-violet-100"><Text className="font-bold text-primary-dark">◈</Text></View>
+                  <View className="flex-1">
+                    <Text className="font-bold text-content">{bot.botName}</Text>
+                    <Text className="mt-1 text-xs text-content-muted">{bot.description}</Text>
                   </View>
                   {selected ? <StatusBadge label="Đã chọn" tone="info" /> : null}
                 </Pressable>
               );
             }) : null}
-            <AppButton
-              label={mode === 'direct' ? 'Bắt đầu trò chuyện' : mode === 'group' ? `Tạo nhóm (${selectedIds.length})` : 'Mở kênh bot'}
-              loading={saving}
-              onPress={() => void create()}
-            />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
 }
-
 function BotSettingsModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const [selectedBotCode, setSelectedBotCode] = useState('');
@@ -492,10 +634,10 @@ function BotSettingsModal({ onClose }: { onClose: () => void }) {
       {settings.isError ? <ErrorState text={getApiErrorMessage(settings.error)} onRetry={() => void settings.refetch()} /> : null}
       {settings.data ? (
         <>
-          <View style={styles.botSummary}>
-            <Text style={styles.botSummaryTitle}>{settings.data.botName}</Text>
-            <Text style={styles.botSummaryText}>{settings.data.description}</Text>
-            <Text style={styles.botSummaryCount}>{recipientIds.length} tài khoản nhận thông báo</Text>
+          <View className="gap-[5px] rounded-control bg-primary-soft p-3">
+            <Text className="text-[15px] font-bold text-primary-dark">{settings.data.botName}</Text>
+            <Text className="text-body leading-[18px] text-content-muted">{settings.data.description}</Text>
+            <Text className="text-xs font-bold text-primary-dark">{recipientIds.length} tài khoản nhận thông báo</Text>
           </View>
           <SearchField placeholder="Tìm tài khoản nhận thông báo..." value={search} onChangeText={setSearch} />
           {filteredUsers.map(account => {
@@ -509,12 +651,12 @@ function BotSettingsModal({ onClose }: { onClose: () => void }) {
                   ...current,
                   [effectiveBotCode]: selected ? recipientIds.filter(id => id !== account.id) : [...recipientIds, account.id],
                 }))}
-                style={[styles.recipient, selected && styles.recipientSelected]}
+                className={`min-h-[62px] flex-row items-center gap-2.5 rounded-control border p-2.5 ${selected ? 'border-primary-border bg-primary-soft' : 'border-border bg-surface'}`}
               >
-                <View style={styles.smallAvatar}><Text style={styles.smallAvatarText}>{account.fullName.charAt(0)}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.recipientName}>{account.fullName}</Text>
-                  <Text style={styles.recipientMeta}>@{account.username}{account.phone ? ` · ${account.phone}` : ''}</Text>
+                <View className="h-10 w-10 items-center justify-center rounded-[10px] bg-primary-soft"><Text className="font-bold text-primary-dark">{account.fullName.charAt(0)}</Text></View>
+                <View className="flex-1">
+                  <Text className="font-bold text-content">{account.fullName}</Text>
+                  <Text className="mt-1 text-xs text-content-muted">@{account.username}{account.phone ? ` · ${account.phone}` : ''}</Text>
                 </View>
                 {selected ? <StatusBadge label="Nhận tin" tone="success" /> : null}
               </Pressable>
@@ -526,46 +668,3 @@ function BotSettingsModal({ onClose }: { onClose: () => void }) {
     </ManagementSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  headerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 7 },
-  item: { minHeight: 74, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderSubtle, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  pressed: { opacity: 0.72 },
-  avatar: { width: 46, height: 46, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  avatarSystem: { backgroundColor: '#EDE9FE' },
-  avatarText: { color: colors.primaryDark, fontSize: 20, fontWeight: '700' },
-  body: { flex: 1, gap: 4 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '700' },
-  time: { color: colors.textMuted, fontSize: 10 },
-  preview: { color: colors.textMuted, fontSize: 13 },
-  meta: { color: colors.primaryDark, fontSize: 10, fontWeight: '700' },
-  badge: { minWidth: 24, height: 24, paddingHorizontal: 7, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  badgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  searchSection: { gap: 7 },
-  searchSectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  searchResult: { minHeight: 62, padding: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderSubtle, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  searchResultBody: { flex: 1, minWidth: 0 },
-  searchResultHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  openingText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
-  messageAvatar: { backgroundColor: '#E0F2FE' },
-  groupAvatar: { backgroundColor: '#EDE9FE' },
-  modalSafeArea: { flex: 1, backgroundColor: colors.background },
-  modalHeader: { minHeight: ui.headerHeight, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  cancel: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
-  save: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  modalContent: { padding: 12, gap: 12 },
-  input: { minHeight: ui.controlHeight, borderWidth: 1, borderColor: colors.border, borderRadius: ui.radius, backgroundColor: colors.surface, paddingHorizontal: 12, color: colors.text },
-  recipient: { minHeight: 62, padding: 10, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  recipientSelected: { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft },
-  smallAvatar: { width: 40, height: 40, borderRadius: 10, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  smallAvatarText: { color: colors.primaryDark, fontWeight: '700' },
-  botAvatar: { backgroundColor: '#EDE9FE' },
-  recipientName: { color: colors.text, fontWeight: '700' },
-  recipientMeta: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
-  botSummary: { padding: 12, borderRadius: ui.radius, backgroundColor: colors.primarySoft, gap: 5 },
-  botSummaryTitle: { color: colors.primaryDark, fontSize: 15, fontWeight: '700' },
-  botSummaryText: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
-  botSummaryCount: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
-});

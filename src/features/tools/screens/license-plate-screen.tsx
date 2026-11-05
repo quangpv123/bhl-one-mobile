@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Text, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import { AppButton, Card, ErrorState, InfoRow, LoadingBlock, StatusBadge } from '@/components/ui';
 import { api, getApiErrorMessage } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { LicensePlateHealth } from '@/types/business';
 
 interface RecognitionResult {
@@ -85,22 +84,22 @@ export function LicensePlateAiScreen() {
       {health.isError ? <ErrorState text={getApiErrorMessage(health.error)} onRetry={() => void health.refetch()} /> : null}
       {health.data ? (
         <Card tone="soft">
-          <View style={styles.heading}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>{health.data.status === 'ready' ? 'Dịch vụ AI sẵn sàng' : `Trạng thái: ${health.data.status}`}</Text>
-              <Text style={styles.description}>Detector: {health.data.detectorClasses ?? '—'} lớp · OCR: {health.data.ocrClasses ?? '—'} lớp</Text>
+          <View className="flex-row items-start gap-2.5">
+            <View className="flex-1">
+              <Text className="text-card font-bold text-content">{health.data.status === 'ready' ? 'Dịch vụ AI sẵn sàng' : `Trạng thái: ${health.data.status}`}</Text>
+              <Text className="mt-[5px] text-xs leading-[18px] text-content-muted">Detector: {health.data.detectorClasses ?? '—'} lớp · OCR: {health.data.ocrClasses ?? '—'} lớp</Text>
             </View>
             <StatusBadge label={health.data.status === 'ready' ? 'Sẵn sàng' : 'Chưa sẵn sàng'} tone={health.data.status === 'ready' ? 'success' : 'warning'} />
           </View>
         </Card>
       ) : null}
       <Card>
-        <Text style={styles.sectionTitle}>Ảnh xe</Text>
-        {image ? <Image source={{ uri: image.uri }} resizeMode="contain" style={styles.preview} /> : <View style={styles.placeholder}><Text style={styles.placeholderText}>Chưa chọn ảnh</Text></View>}
-        {image ? <Text numberOfLines={1} style={styles.fileName}>{image.fileName || image.uri.split('/').at(-1)}</Text> : null}
-        <View style={styles.actions}>
-          <View style={styles.action}><AppButton compact tone="secondary" label="Chọn ảnh" onPress={() => void chooseImage(false)} /></View>
-          <View style={styles.action}><AppButton compact label="Chụp ảnh" onPress={() => void chooseImage(true)} /></View>
+        <Text className="mb-2.5 text-card font-bold text-content">Ảnh xe</Text>
+        {image ? <Image source={{ uri: image.uri }} resizeMode="contain" className="h-60 w-full rounded-card bg-gray-900" /> : <View className="h-[210px] items-center justify-center rounded-card bg-surface-muted"><Text className="font-bold text-content-muted">Chưa chọn ảnh</Text></View>}
+        {image ? <Text numberOfLines={1} className="mt-2 text-xs text-content-muted">{image.fileName || image.uri.split('/').at(-1)}</Text> : null}
+        <View className="my-3 flex-row gap-2">
+          <View className="flex-1"><AppButton compact tone="secondary" label="Chọn ảnh" onPress={() => void chooseImage(false)} /></View>
+          <View className="flex-1"><AppButton compact label="Chụp ảnh" onPress={() => void chooseImage(true)} /></View>
         </View>
         <AppButton
           label="Nhận diện biển số"
@@ -111,45 +110,28 @@ export function LicensePlateAiScreen() {
       </Card>
       {result ? (
         <Card tone={result.plate ? 'soft' : 'danger'}>
-          <Text style={styles.sectionTitle}>Kết quả nhận diện</Text>
+          <Text className="mb-2.5 text-card font-bold text-content">Kết quả nhận diện</Text>
           {result.plate ? (
             <>
-              <Text style={styles.plate}>{result.formattedPlate || result.plate}</Text>
+              <Text className="my-4 text-center text-[34px] font-bold tracking-[2px] text-primary-dark">{result.formattedPlate || result.plate}</Text>
               {result.plateImage ? (
                 <Image
                   source={{ uri: `data:${result.plateImage.mimeType};base64,${result.plateImage.base64}` }}
                   resizeMode="contain"
-                  style={styles.plateImage}
+                  className="mb-3 h-[100px] w-full rounded-control bg-gray-900"
                 />
               ) : null}
               <InfoRow label="Độ tin cậy phát hiện" value={`${Math.round(result.detectorConfidence * 100)}%`} />
               <InfoRow label="Độ tin cậy OCR" value={`${Math.round(result.ocrConfidence * 100)}%`} />
               <InfoRow label="Thời gian xử lý" value={`${result.processingMs} ms`} />
-              {result.characters.length ? <Text style={styles.characters}>{result.characters.map(character => character.value).join(' · ')}</Text> : null}
+              {result.characters.length ? <Text className="mt-3 text-center text-body text-content-muted">{result.characters.map(character => character.value).join(' · ')}</Text> : null}
             </>
           ) : (
-            <Text style={styles.notFound}>Không phát hiện được biển số. Hãy thử ảnh rõ và chụp gần hơn.</Text>
+            <Text className="leading-[21px] text-danger">Không phát hiện được biển số. Hãy thử ảnh rõ và chụp gần hơn.</Text>
           )}
         </Card>
       ) : null}
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  heading: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  title: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  description: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 5 },
-  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: ui.gap },
-  placeholder: { height: 210, borderRadius: ui.cardRadius, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
-  placeholderText: { color: colors.textMuted, fontWeight: '700' },
-  preview: { width: '100%', height: 240, borderRadius: ui.cardRadius, backgroundColor: '#111827' },
-  fileName: { color: colors.textMuted, fontSize: 12, marginTop: 8 },
-  actions: { flexDirection: 'row', gap: 8, marginVertical: 12 },
-  action: { flex: 1 },
-  plate: { color: colors.primaryDark, textAlign: 'center', fontSize: 34, letterSpacing: 2, fontWeight: '700', marginVertical: 16 },
-  plateImage: { width: '100%', height: 100, borderRadius: 10, backgroundColor: '#111827', marginBottom: 12 },
-  characters: { color: colors.textMuted, textAlign: 'center', fontSize: 13, marginTop: 12 },
-  notFound: { color: colors.danger, lineHeight: 21 },
-});
 

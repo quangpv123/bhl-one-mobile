@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, Text, View } from 'react-native';
+import { z } from 'zod';
 
 import { Screen } from '@/components/screen';
 import { QrScannerModal } from '@/components/qr-scanner-modal';
@@ -25,7 +26,6 @@ import {
   getProtectedApiHeaders,
   hasProtectedApiSession,
 } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type {
   MaterialInventoryUnit,
   MaterialIssueSummary,
@@ -42,6 +42,7 @@ import {
   MaterialEvidencePicker,
 } from '../components/material-document-create';
 import { FormField, ManagementSheet } from '@/components/forms/management-form';
+import { requiredTextSchema } from '@/lib/validation';
 
 interface MaterialEvidence {
   id: string;
@@ -51,7 +52,6 @@ interface MaterialEvidence {
   uploadedByName: string;
   createdAt: string;
 }
-
 type MaterialDocumentLine = Record<string, unknown> & {
   evidence?: MaterialEvidence[];
   units?: Record<string, unknown>[];
@@ -66,7 +66,6 @@ function documentStatus(status: string) {
   if (status === 'ISSUED') return <StatusBadge label="Đã xuất" tone="info" />;
   return <StatusBadge label="Bản nháp" tone="warning" />;
 }
-
 const materialStatusLabels: Record<string, string> = {
   IN_STOCK: 'Trong kho',
   ISSUED: 'Đang lắp đặt',
@@ -94,6 +93,19 @@ const materialEventLabels: Record<string, string> = {
 
 type MaterialAction = 'install' | 'quarantine' | 'return' | 'damage' | 'release';
 
+const materialActionSchema = z.object({
+  action: z.enum(['install', 'quarantine', 'return', 'damage', 'release']),
+  notes: z.string(),
+  imageCount: z.number().int().nonnegative(),
+}).superRefine((value, context) => {
+  if (['install', 'quarantine', 'return'].includes(value.action) && value.imageCount < 1) {
+    context.addIssue({ code: 'custom', path: ['imageCount'], message: 'Chụp hoặc chọn ít nhất một ảnh vật tư.' });
+  }
+  if (['quarantine', 'damage', 'release'].includes(value.action) && value.notes.trim().length < 3) {
+    context.addIssue({ code: 'custom', path: ['notes'], message: 'Ghi chú phải có ít nhất 3 ký tự.' });
+  }
+});
+
 function normalizeQr(value: string) {
   const trimmed = value.trim();
   try {
@@ -102,7 +114,6 @@ function normalizeQr(value: string) {
     return trimmed;
   }
 }
-
 function EvidenceGallery({
   evidence,
   token,
@@ -114,9 +125,9 @@ function EvidenceGallery({
 }) {
   if (!evidence.length || !hasProtectedApiSession(token)) return null;
   return (
-    <View style={styles.evidenceGallery}>
-      <Text style={styles.evidenceTitle}>Ảnh minh chứng ({evidence.length})</Text>
-      <View style={styles.evidenceImages}>
+    <View className="mt-[13px] gap-2">
+      <Text className="text-xs font-bold text-content">Ảnh minh chứng ({evidence.length})</Text>
+      <View className="flex-row flex-wrap gap-2">
         {evidence.map(image => (
           <Pressable key={image.id} onPress={() => onPreview(image)}>
             <Image
@@ -124,7 +135,7 @@ function EvidenceGallery({
                 uri: `${apiBaseUrl}/material-inventory/evidence/${image.id}`,
                 headers: getProtectedApiHeaders(token),
               }}
-              style={styles.evidenceImage}
+              className="h-[70px] w-[70px] rounded-[10px] bg-[#E4E7EC]"
             />
           </Pressable>
         ))}
@@ -132,7 +143,6 @@ function EvidenceGallery({
     </View>
   );
 }
-
 function EvidencePreviewModal({
   evidence,
   token,
@@ -145,9 +155,9 @@ function EvidencePreviewModal({
   if (!evidence || !hasProtectedApiSession(token)) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.previewBackdrop}>
-        <Pressable style={styles.previewClose} onPress={onClose}>
-          <Text style={styles.previewCloseText}>Đóng</Text>
+      <View className="flex-1 bg-[rgba(4,12,24,0.94)] px-[18px] pb-[30px] pt-[54px]">
+        <Pressable className="self-end rounded-full bg-[rgba(255,255,255,0.14)] px-4 py-[9px]" onPress={onClose}>
+          <Text className="font-bold text-white">Đóng</Text>
         </Pressable>
         <Image
           source={{
@@ -155,9 +165,9 @@ function EvidencePreviewModal({
             headers: getProtectedApiHeaders(token),
           }}
           resizeMode="contain"
-          style={styles.previewImage}
+          className="w-full flex-1"
         />
-        <Text numberOfLines={2} style={styles.previewCaption}>{evidence.fileName}</Text>
+        <Text numberOfLines={2} className="mt-2.5 text-center text-xs text-white">{evidence.fileName}</Text>
       </View>
     </Modal>
   );
@@ -173,16 +183,16 @@ export function MaterialInventoryScreen() {
       emptyText="Chưa có dữ liệu tồn kho."
       renderItem={stock => (
         <Card key={`${stock.warehouseId}-${stock.materialId}`}>
-          <View style={styles.heading}>
-            <View style={styles.titleWrap}>
-              <Text style={styles.title}>{stock.materialName}</Text>
-              <Text style={styles.code}>{stock.materialCode}</Text>
+          <View className="flex-row items-start justify-between gap-2.5">
+            <View className="flex-1">
+              <Text className="text-[15px] font-bold leading-[21px] text-content">{stock.materialName}</Text>
+              <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{stock.materialCode}</Text>
             </View>
             <StatusBadge label={stock.trackingMode === 'QR' ? 'QR' : 'Số lượng'} tone="info" />
           </View>
-          <View style={styles.stockValueRow}>
-            <Text style={styles.stockValue}>{formatNumber(stock.quantity, stock.unitDecimalScale)}</Text>
-            <Text style={styles.stockUnit}>{stock.unitSymbol}</Text>
+          <View className="my-3.5 flex-row items-baseline gap-[5px]">
+            <Text className="text-[28px] font-bold text-primary-dark">{formatNumber(stock.quantity, stock.unitDecimalScale)}</Text>
+            <Text className="text-sm font-bold text-content-muted">{stock.unitSymbol}</Text>
           </View>
           <InfoRow label="Kho" value={`${stock.warehouseCode} — ${stock.warehouseName}`} />
           {stock.availableQrUnits != null ? <InfoRow label="QR khả dụng" value={formatNumber(stock.availableQrUnits, 0)} /> : null}
@@ -209,23 +219,23 @@ export function MaterialReceiptsScreen() {
           <Pressable
             key={receipt.id}
             onPress={() => router.push({ pathname: '/material-record/[kind]/[id]', params: { kind: 'receipt', id: receipt.id } })}
-            style={({ pressed }) => pressed ? styles.pressed : undefined}
+            style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
           >
             <Card>
-              <View style={styles.heading}>
-                <View style={styles.titleWrap}>
-                  <Text style={styles.title}>{receipt.receiptNumber}</Text>
-                  <Text style={styles.code}>{formatDate(receipt.receivedAt)}</Text>
+              <View className="flex-row items-start justify-between gap-2.5">
+                <View className="flex-1">
+                  <Text className="text-[15px] font-bold leading-[21px] text-content">{receipt.receiptNumber}</Text>
+                  <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{formatDate(receipt.receivedAt)}</Text>
                 </View>
                 {documentStatus(receipt.status)}
               </View>
-              <View style={styles.rows}>
+              <View className="mt-2.5">
                 <InfoRow label="Kho nhập" value={`${receipt.warehouseCode} — ${receipt.warehouseName}`} />
                 <InfoRow label="Nhà cung cấp" value={receipt.supplierName} />
                 <InfoRow label="Số dòng" value={formatNumber(receipt.lineCount, 0)} />
                 <InfoRow label="Tổng số lượng" value={formatNumber(receipt.totalQuantity)} emphasize />
               </View>
-              <Text style={styles.openHint}>Xem chi tiết →</Text>
+              <Text className="mt-3 text-right text-xs font-bold text-primary">Xem chi tiết →</Text>
             </Card>
           </Pressable>
         )}
@@ -261,24 +271,24 @@ export function MaterialIssuesScreen() {
           <Pressable
             key={issue.id}
             onPress={() => router.push({ pathname: '/material-record/[kind]/[id]', params: { kind: 'issue', id: issue.id } })}
-            style={({ pressed }) => pressed ? styles.pressed : undefined}
+            style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
           >
             <Card>
-              <View style={styles.heading}>
-                <View style={styles.titleWrap}>
-                  <Text style={styles.title}>{issue.issueNumber}</Text>
-                  <Text style={styles.code}>{formatDate(issue.issuedAt)}</Text>
+              <View className="flex-row items-start justify-between gap-2.5">
+                <View className="flex-1">
+                  <Text className="text-[15px] font-bold leading-[21px] text-content">{issue.issueNumber}</Text>
+                  <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{formatDate(issue.issuedAt)}</Text>
                 </View>
                 {documentStatus(issue.status)}
               </View>
-              <View style={styles.rows}>
+              <View className="mt-2.5">
                 <InfoRow label="Kho xuất" value={`${issue.warehouseCode} — ${issue.warehouseName}`} />
                 <InfoRow label="Người nhận" value={issue.assigneeName} />
                 <InfoRow label="Công việc" value={issue.jobCode || '—'} />
                 <InfoRow label="Địa chỉ" value={issue.jobAddress || '—'} />
                 <InfoRow label="Tổng số lượng" value={formatNumber(issue.totalQuantity)} emphasize />
               </View>
-              <Text style={styles.openHint}>Xem chi tiết →</Text>
+              <Text className="mt-3 text-right text-xs font-bold text-primary">Xem chi tiết →</Text>
             </Card>
           </Pressable>
         )}
@@ -356,11 +366,11 @@ export function MaterialRecordDetailScreen({ kind, id }: { kind: 'receipt' | 'is
       {record ? (
         <>
           <Card tone="soft">
-            <View style={styles.heading}>
-              <Text style={styles.title}>{number}</Text>
+            <View className="flex-row items-start justify-between gap-2.5">
+              <Text className="text-[15px] font-bold leading-[21px] text-content">{number}</Text>
               {documentStatus(String(record.status ?? 'DRAFT'))}
             </View>
-            <View style={styles.rows}>
+            <View className="mt-2.5">
               <InfoRow label="Kho" value={`${String(record.warehouseCode ?? '')} — ${String(record.warehouseName ?? '')}`} />
               {kind === 'receipt' ? <InfoRow label="Nhà cung cấp" value={String(record.supplierName ?? '—')} /> : null}
               {kind === 'issue' ? <InfoRow label="Người nhận" value={String(record.assigneeName ?? '—')} /> : null}
@@ -369,7 +379,7 @@ export function MaterialRecordDetailScreen({ kind, id }: { kind: 'receipt' | 'is
               <InfoRow label="Ngày tạo" value={formatDateTime(String(record.createdAt ?? ''))} />
             </View>
             {status === 'DRAFT' && canApprove ? (
-              <View style={styles.workflowActions}>
+              <View className="mt-3.5">
                 <AppButton
                   label={kind === 'receipt' ? 'Xác nhận nhập kho' : 'Xác nhận xuất kho'}
                   loading={submitting}
@@ -378,31 +388,31 @@ export function MaterialRecordDetailScreen({ kind, id }: { kind: 'receipt' | 'is
               </View>
             ) : null}
             {kind === 'issue' && status === 'ISSUED' && canApprove ? (
-              <View style={styles.workflowActions}>
+              <View className="mt-3.5">
                 <AppButton label="Hoàn tất phiếu xuất" loading={submitting} onPress={() => runWorkflowAction('complete')} />
               </View>
             ) : null}
           </Card>
-          <Text style={styles.sectionTitle}>Vật tư ({record.lines?.length ?? 0})</Text>
+          <Text className="mt-1.5 text-[17px] font-bold text-content">Vật tư ({record.lines?.length ?? 0})</Text>
           {record.lines?.map((line, index) => {
             const evidence = Array.isArray(line.evidence) ? line.evidence : [];
             return (
               <Card key={String(line.id ?? index)}>
-                <Text style={styles.title}>{String(line.materialName ?? 'Vật tư')}</Text>
-                <Text style={styles.code}>{String(line.materialCode ?? '—')}</Text>
-                <View style={styles.rows}>
+                <Text className="text-[15px] font-bold leading-[21px] text-content">{String(line.materialName ?? 'Vật tư')}</Text>
+                <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{String(line.materialCode ?? '—')}</Text>
+                <View className="mt-2.5">
                   <InfoRow label="Số lượng" value={`${formatNumber(Number(line.quantity ?? 0), Number(line.unitDecimalScale ?? 2))} ${String(line.unitSymbol ?? '')}`} emphasize />
                   {kind === 'issue' ? <InfoRow label="Đã hoàn trả" value={formatNumber(Number(line.returnedQuantity ?? 0))} /> : null}
                   <InfoRow label="Phương thức" value={line.trackingMode === 'QR' ? 'QR từng vật tư' : 'Theo số lượng'} />
                   <InfoRow label="Số QR" value={formatNumber(Array.isArray(line.units) ? line.units.length : 0, 0)} />
                 </View>
                 {line.units?.length ? (
-                  <View style={styles.unitList}>
+                  <View className="mt-3 gap-[7px]">
                     {line.units.map((unit, unitIndex) => (
-                      <View key={String(unit.id ?? unitIndex)} style={styles.unitRow}>
-                        <View style={styles.titleWrap}>
-                          <Text style={styles.unitSerial}>{String(unit.manufacturerSerial || unit.qrPublicId || `QR #${unitIndex + 1}`)}</Text>
-                          <Text style={styles.unitQr}>{String(unit.qrPublicId || '—')}</Text>
+                      <View key={String(unit.id ?? unitIndex)} className="flex-row items-center gap-[9px] rounded-control bg-primary-soft p-[9px]">
+                        <View className="flex-1">
+                          <Text className="text-xs font-bold text-content">{String(unit.manufacturerSerial || unit.qrPublicId || `QR #${unitIndex + 1}`)}</Text>
+                          <Text className="mt-0.5 text-caption text-primary-dark">{String(unit.qrPublicId || '—')}</Text>
                         </View>
                         <StatusBadge label={materialStatusLabels[String(unit.status ?? '')] ?? String(unit.status ?? 'QR')} tone="info" />
                       </View>
@@ -428,6 +438,7 @@ export function MaterialQrScreen() {
   const [action, setAction] = useState<MaterialAction>();
   const [actionNotes, setActionNotes] = useState('');
   const [actionImages, setActionImages] = useState<ImagePickerAsset[]>([]);
+  const [actionValidationAttempted, setActionValidationAttempted] = useState(false);
   const [previewEvidence, setPreviewEvidence] = useState<MaterialEvidence>();
   const [submitting, setSubmitting] = useState(false);
   const query = useQuery({
@@ -446,22 +457,16 @@ export function MaterialQrScreen() {
   const openAction = (nextAction: MaterialAction) => {
     setActionNotes('');
     setActionImages([]);
+    setActionValidationAttempted(false);
     setAction(nextAction);
   };
 
   const submitAction = async () => {
     const unit = query.data;
     if (!unit || !action) return;
-    const needsImages = action === 'install' || action === 'quarantine' || action === 'return';
-    const needsNotes = action === 'quarantine' || action === 'damage' || action === 'release';
-    if (needsImages && !actionImages.length) {
-      Alert.alert('Thiếu ảnh', 'Chụp hoặc chọn ít nhất một ảnh vật tư.');
-      return;
-    }
-    if (needsNotes && actionNotes.trim().length < 3) {
-      Alert.alert('Thiếu ghi chú', 'Nhập nội dung có ít nhất 3 ký tự.');
-      return;
-    }
+    setActionValidationAttempted(true);
+    const validation = materialActionSchema.safeParse({ action, notes: actionNotes, imageCount: actionImages.length });
+    if (!validation.success) return;
     setSubmitting(true);
     try {
       if (action === 'install' || action === 'quarantine') {
@@ -531,23 +536,23 @@ export function MaterialQrScreen() {
   return (
     <Screen title="Tra cứu vật tư QR" subtitle="Nhập mã QR để xem trạng thái và lịch sử">
       <SearchField placeholder="Mã QR vật tư" value={input} onChangeText={setInput} onSubmit={search} />
-      <View style={styles.lookupActions}>
-        <View style={styles.lookupButton}><AppButton label="Tra cứu" onPress={search} disabled={!input.trim()} loading={query.isFetching} /></View>
-        <View style={styles.lookupButton}><AppButton tone="secondary" label="Quét QR" onPress={() => setScannerOpen(true)} /></View>
+      <View className="flex-row gap-[9px]">
+        <View className="flex-1"><AppButton label="Tra cứu" onPress={search} disabled={!input.trim()} loading={query.isFetching} /></View>
+        <View className="flex-1"><AppButton tone="secondary" label="Quét QR" onPress={() => setScannerOpen(true)} /></View>
       </View>
       {!qrPublicId ? <EmptyState text="Nhập mã in trên tem QR để bắt đầu tra cứu." /> : null}
       {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
       {query.data ? (
         <>
           <Card>
-            <View style={styles.heading}>
-              <View style={styles.titleWrap}>
-                <Text style={styles.title}>{query.data.materialName}</Text>
-                <Text style={styles.code}>{query.data.materialCode} · {query.data.qrPublicId}</Text>
+            <View className="flex-row items-start justify-between gap-2.5">
+              <View className="flex-1">
+                <Text className="text-[15px] font-bold leading-[21px] text-content">{query.data.materialName}</Text>
+                <Text className="mt-1 text-xs font-bold leading-[18px] text-primary-dark">{query.data.materialCode} · {query.data.qrPublicId}</Text>
               </View>
               <StatusBadge label={materialStatusLabels[query.data.status] ?? query.data.status} tone="info" />
             </View>
-            <View style={styles.rows}>
+            <View className="mt-2.5">
               <InfoRow label="Serial NSX" value={query.data.manufacturerSerial || '—'} />
               <InfoRow label="Kho" value={query.data.warehouseName || query.data.warehouseCode || '—'} />
               <InfoRow label="Người giữ" value={query.data.currentHolderName || '—'} />
@@ -555,7 +560,7 @@ export function MaterialQrScreen() {
               <InfoRow label="Công việc" value={query.data.assignedJobCode || '—'} />
               <InfoRow label="Địa chỉ" value={query.data.assignedJobAddress || '—'} />
             </View>
-            <View style={styles.qrActions}>
+            <View className="mt-3.5 flex-row flex-wrap gap-2">
               {query.data.status === 'ISSUED' && query.data.currentHolderId === user?.id ? (
                 <>
                   <AppButton compact label="Đã lắp đặt" onPress={() => openAction('install')} />
@@ -580,15 +585,15 @@ export function MaterialQrScreen() {
               ) : null}
             </View>
           </Card>
-          {query.data.events?.length ? <Text style={styles.sectionTitle}>Lịch sử vật tư</Text> : null}
+          {query.data.events?.length ? <Text className="mt-1.5 text-[17px] font-bold text-content">Lịch sử vật tư</Text> : null}
           {query.data.events?.map((event, index) => (
             <Card key={`${event.eventType}-${event.occurredAt}-${index}`}>
-              <View style={styles.heading}>
-                <Text style={styles.title}>{materialEventLabels[event.eventType] ?? event.eventType}</Text>
-                <Text style={styles.eventTime}>{formatDateTime(event.occurredAt)}</Text>
+              <View className="flex-row items-start justify-between gap-2.5">
+                <Text className="text-[15px] font-bold leading-[21px] text-content">{materialEventLabels[event.eventType] ?? event.eventType}</Text>
+                <Text className="text-caption text-content-muted">{formatDateTime(event.occurredAt)}</Text>
               </View>
               <InfoRow label="Thực hiện bởi" value={event.employeeName} />
-              {event.notes ? <Text style={styles.description}>{event.notes}</Text> : null}
+              {event.notes ? <Text className="mt-2 text-body leading-[19px] text-content-muted">{event.notes}</Text> : null}
               <EvidenceGallery evidence={event.evidence ?? []} token={token} onPreview={setPreviewEvidence} />
             </Card>
           ))}
@@ -610,6 +615,9 @@ export function MaterialQrScreen() {
         >
           <FormField
             label={action === 'quarantine' || action === 'damage' || action === 'release' ? 'Ghi chú *' : 'Ghi chú'}
+            schema={action === 'quarantine' || action === 'damage' || action === 'release'
+              ? requiredTextSchema.min(3, 'Ghi chú phải có ít nhất 3 ký tự.')
+              : undefined}
             value={actionNotes}
             editable={!submitting}
             multiline
@@ -618,6 +626,9 @@ export function MaterialQrScreen() {
           />
           {action === 'install' || action === 'quarantine' || action === 'return' ? (
             <MaterialEvidencePicker images={actionImages} disabled={submitting} onChange={setActionImages} />
+          ) : null}
+          {actionValidationAttempted && !materialActionSchema.safeParse({ action, notes: actionNotes, imageCount: actionImages.length }).success && !actionImages.length && (action === 'install' || action === 'quarantine' || action === 'return') ? (
+            <Text className="text-caption font-medium text-danger">Chụp hoặc chọn ít nhất một ảnh vật tư.</Text>
           ) : null}
         </ManagementSheet>
       ) : null}
@@ -636,37 +647,3 @@ export function MaterialQrScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.72 },
-  heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
-  titleWrap: { flex: 1 },
-  title: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  code: { color: colors.primaryDark, fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 4 },
-  rows: { marginTop: 10 },
-  stockValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 5, marginVertical: 14 },
-  stockValue: { color: colors.primaryDark, fontSize: 28, fontWeight: '700' },
-  stockUnit: { color: colors.textMuted, fontSize: 14, fontWeight: '700' },
-  openHint: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right', marginTop: 12 },
-  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '700', marginTop: 6 },
-  eventTime: { color: colors.textMuted, fontSize: 11 },
-  description: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: 8 },
-  workflowActions: { marginTop: 14 },
-  qrActions: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  lookupActions: { flexDirection: 'row', gap: 9 },
-  lookupButton: { flex: 1 },
-  evidenceGallery: { gap: 8, marginTop: 13 },
-  unitList: { gap: 7, marginTop: 12 },
-  unitRow: { padding: 9, borderRadius: ui.radius, backgroundColor: colors.primarySoft, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  unitSerial: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  unitQr: { color: colors.primaryDark, fontSize: 10, marginTop: 2 },
-  evidenceTitle: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  evidenceImages: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  evidenceImage: { width: 70, height: 70, borderRadius: 10, backgroundColor: '#E4E7EC' },
-  previewBackdrop: { flex: 1, padding: 18, paddingTop: 54, paddingBottom: 30, backgroundColor: 'rgba(4, 12, 24, 0.94)' },
-  previewClose: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)' },
-  previewCloseText: { color: '#FFFFFF', fontWeight: '700' },
-  previewImage: { flex: 1, width: '100%' },
-  previewCaption: { color: '#FFFFFF', textAlign: 'center', fontSize: 12, marginTop: 10 },
-});
-

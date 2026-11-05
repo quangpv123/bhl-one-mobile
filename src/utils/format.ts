@@ -12,8 +12,10 @@ export function formatWeight(value: number | null | undefined) {
 
 export function formatDate(value: string | null | undefined) {
   if (!value) return '—';
-  const parts = value.slice(0, 10).split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (isoMatch) return `${isoMatch[3]}-${isoMatch[2]}-${isoMatch[1]}`;
+  const displayMatch = /^(\d{2})[/-](\d{2})[/-](\d{4})/.exec(value.trim());
+  if (displayMatch) return `${displayMatch[1]}-${displayMatch[2]}-${displayMatch[3]}`;
   return value;
 }
 
@@ -21,15 +23,46 @@ export function formatDateTime(value: string | null | undefined) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('vi-VN', {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Ho_Chi_Minh',
     hour12: false,
+    hourCycle: 'h23',
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  });
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value ?? '';
+  return `${part('day')}-${part('month')}-${part('year')} ${part('hour')}:${part('minute')}`;
+}
+
+export function formatTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour12: false,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+export function displayDateToIso(value: string) {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
+}
+
+export function formatLocalDateTimeInput(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value.trim());
+  return match ? `${match[3]}-${match[2]}-${match[1]} ${match[4]}:${match[5]}` : value;
+}
+
+export function displayDateTimeToLocalIso(value: string) {
+  const match = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/.exec(value.trim());
+  return match ? `${match[3]}-${match[2]}-${match[1]}T${match[4]}:${match[5]}` : value;
 }
 
 export function todayIso() {

@@ -1,8 +1,7 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { StatusBadge } from '@/components/ui';
-import { colors, typography, ui } from '@/theme/colors';
 import type { PurchaseWarehouseTicket } from '@/types/business';
 import { formatDate, formatMoney, formatNumber, formatWeight } from '@/utils/format';
 
@@ -18,18 +17,18 @@ function ticketNumber(ticket: PurchaseWarehouseTicket, warehouseCode?: string) {
 
 function DetailCell({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   return (
-    <View style={styles.detailCell}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text selectable style={[styles.detailValue, danger && styles.detailValueDanger]}>{value}</Text>
+    <View className="min-h-[52px] w-1/2 justify-center border-b border-r border-border px-[9px] py-[7px]">
+      <Text className="text-caption font-medium text-content-muted">{label}</Text>
+      <Text selectable className={`mt-0.5 text-label font-bold ${danger ? 'text-danger' : 'text-content'}`}>{value}</Text>
     </View>
   );
 }
 
 function WeightRow({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
-    <View style={[styles.weightRow, emphasis && styles.weightRowEmphasis]}>
-      <Text style={[styles.weightLabel, emphasis && styles.weightLabelEmphasis]}>{label}</Text>
-      <Text style={[styles.weightValue, emphasis && styles.weightValueEmphasis]}>{value}</Text>
+    <View className={`min-h-[38px] flex-row items-center gap-2.5 border-b border-border px-2.5 ${emphasis ? 'bg-primary-soft' : ''}`}>
+      <Text className={`flex-1 text-label ${emphasis ? 'font-bold text-primary-dark' : 'font-medium text-content-secondary'}`}>{label}</Text>
+      <Text className={`text-right font-bold ${emphasis ? 'text-sm text-primary-dark' : 'text-label text-content'}`}>{value}</Text>
     </View>
   );
 }
@@ -64,11 +63,11 @@ export function TicketDetailSheet({
       visible
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text numberOfLines={1} style={styles.headerTitle}>Chi tiết phiếu cân</Text>
-            <Text numberOfLines={1} style={styles.headerSubtitle}>
+      <SafeAreaView className="flex-1 bg-surface" edges={['top', 'right', 'bottom', 'left']}>
+        <View className="min-h-14 flex-row items-center gap-2.5 border-b border-border px-3">
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="text-card font-bold text-content">Chi tiết phiếu cân</Text>
+            <Text numberOfLines={1} className="mt-px text-caption font-semibold text-content-muted">
               Số {ticketNumber(ticket, warehouseCode)}
             </Text>
           </View>
@@ -77,22 +76,23 @@ export function TicketDetailSheet({
             accessibilityLabel="Đóng chi tiết phiếu cân"
             hitSlop={8}
             onPress={onClose}
-            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+            className="min-h-control items-center justify-center rounded-compact bg-surface-muted px-2.5"
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
           >
-            <Text style={styles.closeButtonText}>Đóng</Text>
+            <Text className="text-label font-semibold text-content-secondary">Đóng</Text>
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.printHeading}>
-            <Text style={styles.stationName}>{warehouseName || ticket.warehouseCode || warehouseCode || 'Kho thu mua'}</Text>
+        <ScrollView contentContainerClassName="gap-4 p-3 pb-7">
+          <View className="items-center">
+            <Text className="text-center text-section font-extrabold uppercase text-content">{warehouseName || ticket.warehouseCode || warehouseCode || 'Kho thu mua'}</Text>
             {ticket.warehouseAddress ? (
-              <Text style={styles.stationMeta}>Địa chỉ: {ticket.warehouseAddress}</Text>
+              <Text className="mt-[3px] text-center text-caption font-semibold text-content-muted">Địa chỉ: {ticket.warehouseAddress}</Text>
             ) : null}
-            <View style={styles.headingDivider} />
-            <Text style={styles.printTitle}>{ticket.printTitle}</Text>
-            <View style={styles.ticketNumberRow}>
-              <Text style={styles.printTicketNumber}>Số phiếu: {ticketNumber(ticket, warehouseCode)}</Text>
+            <View className="my-2.5 h-px w-[120px] bg-content-muted" />
+            <Text className="text-center text-lg leading-6 font-extrabold text-content">{ticket.printTitle}</Text>
+            <View className="mt-[5px] flex-row items-center gap-2">
+              <Text className="text-xs italic text-content-secondary">Số phiếu: {ticketNumber(ticket, warehouseCode)}</Text>
               <StatusBadge
                 label={statusLabel}
                 tone={ticket.status === 'VOID' ? 'danger' : ticket.ticketType === 'IMPORT' ? 'success' : 'warning'}
@@ -101,16 +101,16 @@ export function TicketDetailSheet({
           </View>
 
           {ticket.status === 'VOID' ? (
-            <View style={styles.voidNotice}>
-              <Text style={styles.voidTitle}>Phiếu đã hủy</Text>
-              <Text style={styles.voidText}>Lý do: {textOrDash(ticket.voidReason)}</Text>
-              {ticket.voidedByName ? <Text style={styles.voidText}>Người hủy: {ticket.voidedByName}</Text> : null}
+            <View className="gap-[3px] border-l-[3px] border-danger bg-danger-soft p-2.5">
+              <Text className="text-label font-bold text-danger">Phiếu đã hủy</Text>
+              <Text className="text-caption font-semibold text-content-secondary">Lý do: {textOrDash(ticket.voidReason)}</Text>
+              {ticket.voidedByName ? <Text className="text-caption font-semibold text-content-secondary">Người hủy: {ticket.voidedByName}</Text> : null}
             </View>
           ) : null}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin trên phiếu in</Text>
-            <View style={styles.detailGrid}>
+          <View className="gap-[7px]">
+            <Text className="text-card font-bold text-content">Thông tin trên phiếu in</Text>
+            <View className="flex-row flex-wrap border-l border-t border-border">
               <DetailCell label="Ngày cân hàng + bì" value={formatDate(ticket.grossWeighedDate)} />
               <DetailCell label="Giờ cân hàng + bì" value={ticket.grossWeighedTime} />
               <DetailCell label="Ngày cân bì" value={formatDate(ticket.tareWeighedDate)} />
@@ -127,9 +127,9 @@ export function TicketDetailSheet({
           </View>
 
           {ticket.closesLot ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Thông tin cắt lô</Text>
-              <View style={styles.detailGrid}>
+            <View className="gap-[7px]">
+              <Text className="text-card font-bold text-content">Thông tin cắt lô</Text>
+              <View className="flex-row flex-wrap border-l border-t border-border">
                 <DetailCell
                   label="Tổng nhập lô"
                   value={ticket.lotImportWeight == null ? '—' : formatWeight(ticket.lotImportWeight)}
@@ -155,9 +155,9 @@ export function TicketDetailSheet({
             </View>
           ) : null}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Khối lượng</Text>
-            <View style={styles.weightTable}>
+          <View className="gap-[7px]">
+            <Text className="text-card font-bold text-content">Khối lượng</Text>
+            <View className="border-t border-border">
               <WeightRow label="Khối lượng hàng + bì" value={formatWeight(ticket.grossWeight)} />
               <WeightRow label="Khối lượng bì" value={formatWeight(ticket.tareWeight)} />
               <WeightRow label="Khối lượng hàng" value={formatWeight(goodsWeight)} />
@@ -167,9 +167,9 @@ export function TicketDetailSheet({
             </View>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Lái xe và thanh toán</Text>
-            <View style={styles.detailGrid}>
+          <View className="gap-[7px]">
+            <Text className="text-card font-bold text-content">Lái xe và thanh toán</Text>
+            <View className="flex-row flex-wrap border-l border-t border-border">
               <DetailCell label="Họ tên lái xe" value={textOrDash(ticket.driverName)} />
               <DetailCell label="Số điện thoại" value={textOrDash(ticket.driverPhone)} />
               <DetailCell label="CCCD" value={textOrDash(ticket.driverCitizenId)} />
@@ -179,9 +179,9 @@ export function TicketDetailSheet({
             </View>
           </View>
 
-          <View style={styles.signatureRow}>
+          <View className="min-h-[70px] flex-row items-start justify-between gap-1">
             {['Bên bán', 'Lái xe', 'Người cân', 'Kế toán/Thủ kho', 'Bên mua'].map(label => (
-              <Text key={label} style={styles.signatureLabel}>{label}</Text>
+              <Text key={label} className="flex-1 text-center text-caption font-semibold text-content-muted">{label}</Text>
             ))}
           </View>
         </ScrollView>
@@ -189,79 +189,3 @@ export function TicketDetailSheet({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.surface },
-  header: {
-    minHeight: 56,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  headerText: { flex: 1, minWidth: 0 },
-  headerTitle: { color: colors.text, ...typography.cardTitle },
-  headerSubtitle: { marginTop: 1, color: colors.textMuted, ...typography.caption },
-  closeButton: {
-    minHeight: ui.compactControlHeight,
-    paddingHorizontal: 10,
-    borderRadius: ui.smallRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceMuted,
-  },
-  closeButtonText: { color: colors.textSecondary, ...typography.button },
-  pressed: { opacity: 0.7 },
-  content: { padding: 12, paddingBottom: 28, gap: 16 },
-  printHeading: { alignItems: 'center' },
-  stationName: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center', textTransform: 'uppercase' },
-  stationMeta: { marginTop: 3, color: colors.textMuted, ...typography.caption, textAlign: 'center' },
-  headingDivider: { width: 120, height: StyleSheet.hairlineWidth, marginVertical: 10, backgroundColor: colors.textMuted },
-  printTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '800', textAlign: 'center' },
-  ticketNumberRow: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  printTicketNumber: { color: colors.textSecondary, fontSize: 12, fontStyle: 'italic' },
-  voidNotice: { padding: 10, gap: 3, backgroundColor: colors.dangerSoft, borderLeftWidth: 3, borderLeftColor: colors.danger },
-  voidTitle: { color: colors.danger, ...typography.label, fontWeight: '700' },
-  voidText: { color: colors.textSecondary, ...typography.caption },
-  section: { gap: 7 },
-  sectionTitle: { color: colors.text, ...typography.cardTitle },
-  detailGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  detailCell: {
-    width: '50%',
-    minHeight: 52,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  detailLabel: { color: colors.textMuted, ...typography.caption, fontWeight: '500' },
-  detailValue: { marginTop: 2, color: colors.text, ...typography.label, fontWeight: '700' },
-  detailValueDanger: { color: colors.danger },
-  weightTable: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  weightRow: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  weightRowEmphasis: { backgroundColor: colors.primarySoft },
-  weightLabel: { flex: 1, color: colors.textSecondary, ...typography.label, fontWeight: '500' },
-  weightLabelEmphasis: { color: colors.primaryDark, fontWeight: '700' },
-  weightValue: { color: colors.text, ...typography.label, textAlign: 'right', fontWeight: '700' },
-  weightValueEmphasis: { color: colors.primaryDark, fontSize: 14 },
-  signatureRow: { minHeight: 70, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 },
-  signatureLabel: { flex: 1, color: colors.textMuted, fontSize: 9, lineHeight: 12, textAlign: 'center', fontWeight: '600' },
-});

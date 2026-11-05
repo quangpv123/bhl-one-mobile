@@ -3,25 +3,32 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { z } from 'zod';
 
 import { PasswordInput } from '@/components/forms/password-input';
 import { AppButton } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth-context';
 import { getApiErrorMessage } from '@/services/api';
 import { getStoredLoginIdentifier } from '@/services/session-storage';
-import { colors, shadows, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
+import { requiredTextSchema, zodErrorMap } from '@/lib/validation';
+
+const loginSchema = z.object({
+  username: requiredTextSchema,
+  password: requiredTextSchema,
+});
 
 export default function LoginScreen() {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const usernameEdited = useRef(false);
   const usernameValue = useRef('');
   const passwordValue = useRef('');
@@ -47,10 +54,8 @@ export default function LoginScreen() {
   const submit = async () => {
     const loginIdentifier = usernameValue.current.trim();
     const currentPassword = passwordValue.current;
-    if (!loginIdentifier || !currentPassword) {
-      Alert.alert('Thiếu thông tin', 'Nhập tài khoản và mật khẩu để tiếp tục.');
-      return;
-    }
+    setValidationAttempted(true);
+    if (!loginSchema.safeParse({ username: loginIdentifier, password: currentPassword }).success) return;
     if (submittingRef.current) return;
     if (autoLoginTimer.current) {
       clearTimeout(autoLoginTimer.current);
@@ -78,21 +83,26 @@ export default function LoginScreen() {
     }, 350);
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View pointerEvents="none" style={styles.glowOne} />
-        <View pointerEvents="none" style={styles.glowTwo} />
+  const validation = loginSchema.safeParse({ username, password });
+  const validationErrors = validation.success ? {} : zodErrorMap(validation.error);
+  const usernameError = validationAttempted ? validationErrors.username : undefined;
+  const passwordError = validationAttempted ? validationErrors.password : undefined;
 
-        <View style={styles.form}>
-          <View style={styles.heading}>
-            <View style={styles.brandMark}><Text style={styles.brandLetter}>E</Text></View>
+  return (
+    <SafeAreaView className="flex-1 bg-sidebar">
+      <KeyboardAvoidingView className="flex-1 justify-center overflow-hidden bg-sidebar p-4" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View pointerEvents="none" className="absolute right-[-130px] top-[9%] h-[340px] w-[340px] rounded-full bg-[rgba(37,99,235,0.28)]" />
+        <View pointerEvents="none" className="absolute bottom-[-150px] left-[-110px] h-[360px] w-[360px] rounded-full bg-[rgba(14,165,233,0.12)]" />
+
+        <View className="w-full max-w-[440px] self-center gap-[9px] rounded-card bg-surface px-[22px] py-[26px] shadow-lg">
+          <View className="mb-[18px] flex-row items-center gap-3">
+            <View className="h-11 w-11 items-center justify-center rounded-card bg-primary shadow-md"><Text className="text-[23px] font-bold text-white">E</Text></View>
             <View>
-              <Text style={styles.title}>Đăng nhập</Text>
-              <Text style={styles.subtitle}>ERP Workspace · BHL One</Text>
+              <Text className="text-[28px] leading-8 font-bold text-content">Đăng nhập</Text>
+              <Text className="mt-[3px] text-xs text-content-muted">ERP Workspace · BHL One</Text>
             </View>
           </View>
-          <Text style={styles.label}>Tên đăng nhập, email hoặc số điện thoại</Text>
+          <Text className="mt-1 text-body font-semibold text-content-secondary">Tên đăng nhập, email hoặc số điện thoại</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -100,7 +110,8 @@ export default function LoginScreen() {
             editable={!submitting}
             placeholder="Ví dụ: admin hoặc 0901234567"
             placeholderTextColor={colors.textPlaceholder}
-            style={styles.input}
+            className={`h-control rounded-control border px-3 py-0 text-content ${usernameError ? 'border-danger bg-danger-soft' : 'border-border bg-surface'}`}
+            style={{ textAlignVertical: 'center', includeFontPadding: false }}
             value={username}
             onChangeText={value => {
               const previousValue = usernameValue.current;
@@ -110,11 +121,13 @@ export default function LoginScreen() {
               if (!previousValue && value.length > 1 && passwordValue.current.length > 1) scheduleAutofillLogin();
             }}
           />
-          <Text style={styles.label}>Mật khẩu</Text>
+          {usernameError ? <Text className="text-caption font-medium text-danger">{usernameError}</Text> : null}
+          <Text className="mt-1 text-body font-semibold text-content-secondary">Mật khẩu</Text>
           <PasswordInput
             autoComplete="current-password"
             editable={!submitting}
             placeholder="Nhập mật khẩu"
+            containerStyle={passwordError ? { borderColor: colors.danger, backgroundColor: colors.dangerSoft } : undefined}
             value={password}
             onChangeText={value => {
               const previousValue = passwordValue.current;
@@ -124,7 +137,8 @@ export default function LoginScreen() {
             }}
             onSubmitEditing={() => void submit()}
           />
-          <View style={styles.loginButton}>
+          {passwordError ? <Text className="text-caption font-medium text-danger">{passwordError}</Text> : null}
+          <View className="mt-2.5">
             <AppButton label="Đăng nhập" loading={submitting} onPress={() => void submit()} />
           </View>
         </View>
@@ -132,48 +146,3 @@ export default function LoginScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.sidebar },
-  page: { flex: 1, justifyContent: 'center', padding: 16, overflow: 'hidden', backgroundColor: colors.sidebar },
-  glowOne: { position: 'absolute', right: -130, top: '9%', width: 340, height: 340, borderRadius: 170, backgroundColor: 'rgba(37, 99, 235, 0.28)' },
-  glowTwo: { position: 'absolute', left: -110, bottom: -150, width: 360, height: 360, borderRadius: 180, backgroundColor: 'rgba(14, 165, 233, 0.12)' },
-  heading: { marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brandMark: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  brandLetter: { color: '#FFFFFF', fontSize: 23, fontWeight: '700' },
-  title: { fontSize: 28, lineHeight: 32, fontWeight: '700', color: colors.text },
-  subtitle: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
-  form: {
-    width: '100%',
-    maxWidth: 440,
-    alignSelf: 'center',
-    paddingHorizontal: 22,
-    paddingVertical: 26,
-    borderRadius: ui.cardRadius,
-    backgroundColor: colors.surface,
-    gap: 9,
-    ...shadows.floating,
-  },
-  label: { color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginTop: 4 },
-  input: {
-    minHeight: ui.controlHeight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: ui.radius,
-    paddingHorizontal: 12,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  loginButton: { marginTop: 10 },
-});

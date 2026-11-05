@@ -6,7 +6,6 @@ import { Screen } from '@/components/screen';
 import { EmptyState, ErrorState, LoadingBlock, SearchField } from '@/components/ui';
 import { api, getApiErrorMessage } from '@/services/api';
 import type { PaginatedResponse } from '@/types/business';
-import { colors } from '@/theme/colors';
 
 export function RemoteListScreen<T>({
   queryKey,
@@ -62,7 +61,7 @@ export function RemoteListScreen<T>({
       {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text={emptyText} /> : null}
       {query.data?.data.map(renderItem)}
       {query.data?.pagination ? (
-        <Text style={{ textAlign: 'center', color: colors.textMuted, fontSize: 12, paddingVertical: 8 }}>
+        <Text className="py-2 text-center text-xs text-content-muted">
           Tổng {query.data.pagination.total.toLocaleString('vi-VN')} bản ghi
         </Text>
       ) : null}

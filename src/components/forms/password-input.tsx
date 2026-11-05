@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -10,7 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, typography, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
 
 type PasswordInputProps = Omit<TextInputProps, 'secureTextEntry'> & {
   containerStyle?: StyleProp<ViewStyle>;
@@ -25,7 +24,10 @@ export function PasswordInput({ containerStyle, editable = true, onChangeText, v
   };
 
   return (
-    <View style={[styles.container, !editable && styles.disabled, containerStyle]}>
+    <View
+      className={`h-control flex-row items-center rounded-control border border-border bg-surface ${!editable ? 'bg-surface-muted opacity-70' : ''}`}
+      style={containerStyle}
+    >
       <TextInput
         {...props}
         autoCapitalize={props.autoCapitalize ?? 'none'}
@@ -35,7 +37,8 @@ export function PasswordInput({ containerStyle, editable = true, onChangeText, v
         secureTextEntry={!visible}
         value={value}
         onChangeText={handleChangeText}
-        style={[styles.input, props.style]}
+        className="h-8 flex-1 min-w-0 py-0 pl-3 pr-1.5 text-sm text-content"
+        style={props.style}
       />
       <Pressable
         accessibilityLabel={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
@@ -43,40 +46,11 @@ export function PasswordInput({ containerStyle, editable = true, onChangeText, v
         disabled={!editable}
         hitSlop={4}
         onPress={() => setVisible(current => !current)}
-        style={({ pressed }) => [styles.toggle, pressed && styles.togglePressed]}
+        className="h-8 items-center justify-center px-3"
+        style={({ pressed }) => ({ opacity: pressed ? 0.62 : 1 })}
       >
-        <Text style={styles.toggleText}>{visible ? 'Ẩn' : 'Hiện'}</Text>
+        <Text className="text-label font-semibold text-primary-dark">{visible ? 'Ẩn' : 'Hiện'}</Text>
       </Pressable>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    minHeight: ui.controlHeight,
-    borderRadius: ui.radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  disabled: { backgroundColor: colors.surfaceMuted, opacity: 0.72 },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: ui.controlHeight - 2,
-    paddingLeft: 12,
-    paddingRight: 6,
-    color: colors.text,
-    fontSize: 14,
-  },
-  toggle: {
-    minHeight: ui.controlHeight - 2,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  togglePressed: { opacity: 0.62 },
-  toggleText: { color: colors.primaryDark, ...typography.label },
-});

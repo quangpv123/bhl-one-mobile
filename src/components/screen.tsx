@@ -2,19 +2,18 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import {
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   View,
   type ViewProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, typography, ui } from '@/theme/colors';
+import { colors } from '@/theme/colors';
 import { AppHeader } from './app-shell';
 
 interface ScreenProps extends PropsWithChildren {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   action?: ReactNode;
   footer?: ReactNode;
   refreshing?: boolean;
@@ -37,9 +36,15 @@ export function Screen({
   const content = (
     <>
       {subtitle || action ? (
-        <View style={styles.contextRow}>
-          {subtitle ? <Text numberOfLines={2} style={styles.subtitle}>{subtitle}</Text> : <View style={styles.contextSpacer} />}
-          {action ? <View style={styles.action}>{action}</View> : null}
+        <View className="min-h-[30px] flex-row items-center gap-2.5">
+          {subtitle ? (
+            typeof subtitle === 'string' ? (
+              <Text numberOfLines={2} className="flex-1 text-label font-normal text-content-muted">{subtitle}</Text>
+            ) : (
+              <View className="min-w-0 flex-1">{subtitle}</View>
+            )
+          ) : <View className="flex-1" />}
+          {action ? <View className="shrink-0 items-end">{action}</View> : null}
         </View>
       ) : null}
       {children}
@@ -48,15 +53,15 @@ export function Screen({
 
   return (
     <SafeAreaView
-      style={styles.safeArea}
+      className="flex-1 bg-background"
       edges={['top', 'right', 'bottom', 'left']}
       onTouchStart={onTouchStart}
     >
       <AppHeader title={title} />
       {scrollEnabled ? (
         <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
+          className="flex-1"
+          contentContainerClassName="gap-2.5 px-page-x pb-page-b pt-page-t"
           refreshControl={onRefresh ? (
             <RefreshControl colors={[colors.primary]} tintColor={colors.primary} refreshing={refreshing} onRefresh={onRefresh} />
           ) : undefined}
@@ -64,26 +69,9 @@ export function Screen({
           {content}
         </ScrollView>
       ) : (
-        <View style={[styles.content, styles.fixedContent]}>{content}</View>
+        <View className="flex-1 gap-2.5 px-page-x pb-page-b pt-page-t">{content}</View>
       )}
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? <View className="shrink-0 bg-surface">{footer}</View> : null}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  scroll: { flex: 1 },
-  content: {
-    paddingTop: ui.pagePaddingTop,
-    paddingHorizontal: ui.pagePaddingHorizontal,
-    paddingBottom: ui.pagePaddingBottom,
-    gap: ui.gap,
-  },
-  fixedContent: { flex: 1 },
-  footer: { flexShrink: 0, backgroundColor: colors.surface },
-  contextRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  contextSpacer: { flex: 1 },
-  subtitle: { flex: 1, color: colors.textMuted, ...typography.label, fontWeight: '400' },
-  action: { flexShrink: 0, alignItems: 'flex-end' },
-});

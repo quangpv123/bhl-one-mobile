@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+
+import '../../global.css';
 
 import { AuthProvider, useAuth } from '@/features/auth/auth-context';
 import { colors } from '@/theme/colors';
@@ -18,7 +20,7 @@ function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={styles.loading}>
+      <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -60,12 +62,3 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-});

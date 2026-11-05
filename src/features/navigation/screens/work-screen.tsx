@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import { EmptyState, SectionTitle } from '@/components/ui';
@@ -21,20 +21,21 @@ export default function WorkScreen() {
         const items = allowedFeatures.filter(feature => feature.group === group.key);
         if (!items.length) return null;
         return (
-          <View key={group.key} style={styles.group}>
+          <View key={group.key} className="mb-2 gap-2">
             <SectionTitle>{group.title}</SectionTitle>
-            <View style={styles.grid}>
+            <View className="flex-row flex-wrap gap-2">
               {items.map(feature => (
                 <Pressable
                   accessibilityRole="button"
                   key={feature.key}
                   onPress={() => router.push(featureHref(feature) as never)}
-                  style={({ pressed }) => [styles.featureCard, pressed && styles.pressed]}
+                  className="min-h-[88px] w-[23%] items-center px-[5px] py-[9px]"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}
                 >
-                  <View style={styles.iconWrap}>
+                  <View className="mb-[7px] h-8 w-8 items-center justify-center rounded-compact bg-primary-soft">
                     <AppIcon name={feature.icon} color={colors.primary} size={18} />
                   </View>
-                  <Text numberOfLines={2} style={styles.title}>{feature.title}</Text>
+                  <Text numberOfLines={2} className="text-center text-caption font-semibold text-content">{feature.title}</Text>
                 </Pressable>
               ))}
             </View>
@@ -44,19 +45,4 @@ export default function WorkScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  group: { gap: 8, marginBottom: 8 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  featureCard: {
-    width: '23%',
-    minHeight: 88,
-    paddingHorizontal: 5,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
-  iconWrap: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
-  title: { color: colors.text, fontSize: 11, lineHeight: 15, fontWeight: '600', textAlign: 'center' },
-});
 

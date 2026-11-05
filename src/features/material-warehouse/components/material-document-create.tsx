@@ -1,17 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { z } from 'zod';
 
 import { AppButton, Card, ErrorState, LoadingBlock, StatusBadge } from '@/components/ui';
 import { QrScannerModal } from '@/components/qr-scanner-modal';
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { MaterialInventoryUnit, PaginatedResponse } from '@/types/business';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
+import { decimalStringSchema, displayDateTimeSchema, firstZodError, requiredTextSchema } from '@/lib/validation';
+import { displayDateTimeToLocalIso, formatLocalDateTimeInput } from '@/utils/format';
 
 interface MaterialOption {
   id: string;
@@ -62,6 +64,54 @@ interface DocumentLineDraft {
 interface ReferenceData {
   materials: MaterialOption[];
   warehouses: WarehouseOption[];
+}
+
+const dateTimeLocalSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Ngày giờ phải theo định dạng dd-mm-yyyy HH:mm.');
+const positiveQuantitySchema = decimalStringSchema({ minimum: 0.000001, message: 'Số lượng phải lớn hơn 0.' });
+const qrQuantitySchema = decimalStringSchema({ minimum: 1, maximum: 100, integer: true, message: 'Số lượng QR phải là số nguyên từ 1 đến 100.' });
+
+function documentLinesSchema(materials: MaterialOption[], mode: 'receipt' | 'issue') {
+  return z.array(z.custom<DocumentLineDraft>()).min(1, 'Phiếu phải có ít nhất một dòng vật tư.').superRefine((lines, context) => {
+    const materialIds = lines.map(line => line.materialId);
+    if (new Set(materialIds).size !== materialIds.length) {
+      context.addIssue({ code: 'custom', message: 'Mỗi vật tư chỉ được xuất hiện một lần trong phiếu.' });
+    }
+    let imageCount = 0;
+    lines.forEach((line, index) => {
+      const material = materials.find(item => item.id === line.materialId);
+      if (!material) {
+        context.addIssue({ code: 'custom', path: [index, 'materialId'], message: 'Vui lòng chọn vật tư còn khả dụng.' });
+        return;
+      }
+      if (material.trackingMode === 'QR') {
+        if (mode === 'receipt') {
+          const quantityValidation = qrQuantitySchema.safeParse(line.quantity);
+          if (!quantityValidation.success || line.serials.length !== Number(line.quantity)) {
+            context.addIssue({ code: 'custom', path: [index, 'quantity'], message: 'Số lượng QR phải là số nguyên từ 1 đến 100.' });
+          }
+          const serialValues = line.serials.map(serial => serial.value.trim());
+          if (serialValues.some(value => !value)) context.addIssue({ code: 'custom', path: [index, 'serials'], message: `${material.materialCode}: nhập đủ serial nhà sản xuất.` });
+          if (new Set(serialValues).size !== serialValues.length) context.addIssue({ code: 'custom', path: [index, 'serials'], message: `${material.materialCode}: các serial không được trùng nhau.` });
+          line.serials.forEach(serial => {
+            imageCount += serial.images.length;
+            if (!serial.images.length) context.addIssue({ code: 'custom', path: [index, 'serials'], message: `${material.materialCode} · ${serial.value || 'serial'}: cần ít nhất một ảnh.` });
+          });
+        } else {
+          if (!line.units.length) context.addIssue({ code: 'custom', path: [index, 'units'], message: `${material.materialCode}: thêm ít nhất một QR.` });
+          line.units.forEach(entry => {
+            imageCount += entry.images.length;
+            if (!entry.images.length) context.addIssue({ code: 'custom', path: [index, 'units'], message: `${material.materialCode} · ${entry.unit.manufacturerSerial || entry.unit.qrPublicId}: cần ít nhất một ảnh.` });
+          });
+        }
+      } else {
+        const quantityValidation = positiveQuantitySchema.safeParse(line.quantity);
+        if (!quantityValidation.success) context.addIssue({ code: 'custom', path: [index, 'quantity'], message: `${material.materialCode}: số lượng phải lớn hơn 0.` });
+        imageCount += line.images.length;
+        if (!line.images.length) context.addIssue({ code: 'custom', path: [index, 'images'], message: `${material.materialCode}: cần ít nhất một ảnh ${mode === 'receipt' ? 'nhập' : 'xuất'} kho.` });
+      }
+    });
+    if (imageCount > 100) context.addIssue({ code: 'custom', message: `Mỗi phiếu ${mode === 'receipt' ? 'nhập' : 'xuất'} hỗ trợ tối đa 100 ảnh.` });
+  });
 }
 
 function localDateTimeValue() {
@@ -162,29 +212,29 @@ export function MaterialEvidencePicker({
   };
 
   return (
-    <View style={styles.evidenceBlock}>
-      <View style={styles.evidenceHeading}>
-        <Text numberOfLines={1} style={styles.evidenceLabel}>{label}</Text>
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between gap-2">
+        <Text numberOfLines={1} className="flex-1 text-xs font-semibold text-content">{label}</Text>
         <StatusBadge label={`${images.length}/5 ảnh`} tone={images.length ? 'success' : 'warning'} />
       </View>
       {images.length ? (
-        <View style={styles.thumbnails}>
+        <View className="flex-row flex-wrap gap-2">
           {images.map((image, index) => (
-            <View key={`${image.uri}-${index}`} style={styles.thumbnailWrap}>
-              <Image source={{ uri: image.uri }} style={styles.thumbnail} />
+            <View key={`${image.uri}-${index}`} className="h-[68px] w-[68px]">
+              <Image source={{ uri: image.uri }} className="h-[68px] w-[68px] rounded-control bg-gray-200" />
               <Pressable
                 accessibilityLabel="Bỏ ảnh"
                 disabled={disabled}
                 onPress={() => onChange(images.filter((_, imageIndex) => imageIndex !== index))}
-                style={styles.removeImage}
+                className="absolute right-[-6px] top-[-6px] h-[23px] w-[23px] items-center justify-center rounded-full bg-danger"
               >
-                <Text style={styles.removeImageText}>×</Text>
+                <Text className="text-[17px] leading-[19px] font-bold text-white">×</Text>
               </Pressable>
             </View>
           ))}
         </View>
-      ) : <Text style={styles.evidenceEmpty}>{emptyText}</Text>}
-      <View style={styles.inlineActions}>
+      ) : <Text className="text-xs italic text-content-muted">{emptyText}</Text>}
+      <View className="flex-row flex-wrap gap-[7px]">
         <AppButton compact tone="secondary" label="Chụp ảnh" disabled={disabled || images.length >= 5} onPress={() => void pick(true)} />
         <AppButton compact tone="ghost" label="Thư viện" disabled={disabled || images.length >= 5} onPress={() => void pick(false)} />
       </View>
@@ -217,6 +267,7 @@ export function CreateMaterialReceiptSheet({ onClose, onSaved }: { onClose: () =
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<DocumentLineDraft[]>([createLine()]);
   const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState<string>();
   const materials = useMemo(() => references.data?.materials ?? [], [references.data?.materials]);
   const materialOptions = useMemo(() => materials.map(material => ({
     value: material.id,
@@ -246,59 +297,42 @@ export function CreateMaterialReceiptSheet({ onClose, onSaved }: { onClose: () =
   };
 
   const submit = async () => {
-    if (!warehouseId || supplierName.trim().length < 2 || !receivedAt) {
-      Alert.alert('Thiếu thông tin', 'Chọn kho nhận, nhập nhà cung cấp và ngày giờ nhập.');
-      return;
-    }
-    if (!lines.length || lines.some(line => !line.materialId)) {
-      Alert.alert('Thiếu vật tư', 'Mỗi dòng phải chọn một vật tư.');
-      return;
-    }
-    if (new Set(lines.map(line => line.materialId)).size !== lines.length) {
-      Alert.alert('Vật tư bị trùng', 'Mỗi vật tư chỉ nên xuất hiện một lần trong phiếu.');
-      return;
-    }
+    const schema = z.object({
+      warehouseId: requiredTextSchema,
+      supplierName: z.string().trim().min(2, 'Nhà cung cấp/Nguồn nhập phải có ít nhất 2 ký tự.'),
+      receivedAt: dateTimeLocalSchema,
+      notes: z.string(),
+      lines: documentLinesSchema(materials, 'receipt'),
+    });
+    const validation = schema.safeParse({ warehouseId, supplierName, receivedAt, notes, lines });
+    setValidationError(firstZodError(validation) ?? undefined);
+    if (!validation.success) return;
     const images: ImagePicker.ImagePickerAsset[] = [];
     const payloadLines: Record<string, unknown>[] = [];
-    try {
-      for (const line of lines) {
+    for (const line of validation.data.lines) {
         const material = selectedMaterial(materials, line);
-        if (!material) throw new Error('Có dòng vật tư không còn khả dụng.');
+        if (!material) continue;
         const quantity = parseQuantity(line.quantity);
-        if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`${material.materialCode}: số lượng phải lớn hơn 0.`);
         if (material.trackingMode === 'QR') {
-          if (!Number.isInteger(quantity) || quantity > 100 || line.serials.length !== quantity) {
-            throw new Error(`${material.materialCode}: số lượng QR phải là số nguyên từ 1 đến 100.`);
-          }
-          const serialValues = line.serials.map(serial => serial.value.trim());
-          if (serialValues.some(serial => !serial)) throw new Error(`${material.materialCode}: nhập đủ serial nhà sản xuất.`);
-          if (new Set(serialValues).size !== serialValues.length) throw new Error(`${material.materialCode}: các serial không được trùng nhau.`);
           const units = line.serials.map(serial => {
-            if (!serial.images.length) throw new Error(`${material.materialCode} · ${serial.value}: cần ít nhất một ảnh.`);
             images.push(...serial.images);
             return { manufacturerSerial: serial.value.trim(), evidenceCount: serial.images.length };
           });
           payloadLines.push({ materialId: line.materialId, quantity, units });
         } else {
-          if (!line.images.length) throw new Error(`${material.materialCode}: cần ít nhất một ảnh nhập kho.`);
           images.push(...line.images);
           payloadLines.push({ materialId: line.materialId, quantity, evidenceCount: line.images.length, units: [] });
         }
       }
-      if (images.length > 100) throw new Error('Mỗi phiếu nhập hỗ trợ tối đa 100 ảnh.');
-    } catch (error) {
-      Alert.alert('Phiếu nhập chưa hợp lệ', error instanceof Error ? error.message : String(error));
-      return;
-    }
 
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append('payload', JSON.stringify({
-        warehouseId,
-        supplierName: supplierName.trim(),
-        receivedAt: new Date(receivedAt).toISOString(),
-        notes: notes.trim() || undefined,
+        warehouseId: validation.data.warehouseId,
+        supplierName: validation.data.supplierName,
+        receivedAt: new Date(validation.data.receivedAt).toISOString(),
+        notes: validation.data.notes.trim() || undefined,
         lines: payloadLines,
       }));
       appendMaterialImages(formData, images);
@@ -316,21 +350,31 @@ export function CreateMaterialReceiptSheet({ onClose, onSaved }: { onClose: () =
     <ManagementSheet title="Khởi tạo phiếu nhập" saveLabel="Lưu khởi tạo" saving={saving} onClose={onClose} onSave={() => void submit()}>
       {references.isLoading ? <LoadingBlock /> : null}
       {references.isError ? <ErrorState text={getApiErrorMessage(references.error)} onRetry={() => void references.refetch()} /> : null}
-      <OptionPicker label="Kho nhận *" value={warehouseId} options={warehouseOptions} disabled={saving} onChange={setWarehouseId} />
-      <FormField label="Nhà cung cấp/Nguồn nhập *" value={supplierName} editable={!saving} maxLength={200} onChangeText={setSupplierName} />
-      <FormField label="Ngày giờ nhập *" hint="Định dạng YYYY-MM-DDTHH:mm" value={receivedAt} editable={!saving} maxLength={16} onChangeText={setReceivedAt} />
-      <Text style={styles.sectionTitle}>Vật tư nhập kho</Text>
+      {validationError ? <Text className="text-caption font-medium text-danger">{validationError}</Text> : null}
+      <OptionPicker label="Kho nhận *" schema={requiredTextSchema} value={warehouseId} options={warehouseOptions} disabled={saving} onChange={setWarehouseId} />
+      <FormField label="Nhà cung cấp/Nguồn nhập *" schema={z.string().trim().min(2, 'Nhà cung cấp/Nguồn nhập phải có ít nhất 2 ký tự.')} value={supplierName} editable={!saving} maxLength={200} onChangeText={setSupplierName} />
+      <FormField
+        label="Ngày giờ nhập *"
+        schema={displayDateTimeSchema}
+        hint="Định dạng dd-mm-yyyy HH:mm"
+        value={formatLocalDateTimeInput(receivedAt)}
+        editable={!saving}
+        maxLength={16}
+        onChangeText={value => setReceivedAt(displayDateTimeToLocalIso(value))}
+      />
+      <Text className="mt-1 text-card font-bold text-content">Vật tư nhập kho</Text>
       {lines.map((line, lineIndex) => {
         const material = selectedMaterial(materials, line);
         return (
           <Card key={line.key} tone="soft">
-            <View style={styles.lineHeading}>
-              <Text style={styles.lineTitle}>Dòng {lineIndex + 1}</Text>
+            <View className="flex-row items-center justify-between gap-2.5">
+              <Text className="text-[15px] font-bold text-content">Dòng {lineIndex + 1}</Text>
               {lines.length > 1 ? <AppButton compact tone="danger-outline" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
             </View>
-            <View style={styles.lineFields}>
+            <View className="mt-3 gap-3">
               <OptionPicker
                 label="Vật tư *"
+                schema={requiredTextSchema}
                 value={line.materialId}
                 options={materialOptions}
                 disabled={saving}
@@ -338,15 +382,17 @@ export function CreateMaterialReceiptSheet({ onClose, onSaved }: { onClose: () =
               />
               <FormField
                 label={`Số lượng${material ? ` (${material.unitSymbol})` : ''} *`}
+                schema={material?.trackingMode === 'QR' ? qrQuantitySchema : positiveQuantitySchema}
                 value={line.quantity}
                 editable={!saving}
                 keyboardType="decimal-pad"
                 onChangeText={quantity => changeQuantity(line, quantity)}
               />
               {material?.trackingMode === 'QR' ? line.serials.map((serial, serialIndex) => (
-                <View key={serial.key} style={styles.serialBlock}>
+                <View key={serial.key} className="gap-2.5 rounded-control border border-border bg-surface p-[11px]">
                   <FormField
                     label={`Serial #${serialIndex + 1} *`}
+                    schema={requiredTextSchema}
                     value={serial.value}
                     editable={!saving}
                     maxLength={150}
@@ -389,6 +435,7 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
   const [lines, setLines] = useState<DocumentLineDraft[]>([createLine()]);
   const [scannerLineKey, setScannerLineKey] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState<string>();
   const canAssignOthers = can(permissions.materialIssuesApprove);
   const usersQuery = useQuery({
     queryKey: ['mobile-material-issue-users'],
@@ -437,28 +484,25 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
   };
 
   const submit = async () => {
-    if (!warehouseId || !assigneeId || !issuedAt) {
-      Alert.alert('Thiếu thông tin', 'Chọn kho xuất, người nhận và ngày giờ xuất.');
-      return;
-    }
-    if (!lines.length || lines.some(line => !line.materialId)) {
-      Alert.alert('Thiếu vật tư', 'Mỗi dòng phải chọn một vật tư.');
-      return;
-    }
-    if (new Set(lines.map(line => line.materialId)).size !== lines.length) {
-      Alert.alert('Vật tư bị trùng', 'Mỗi vật tư chỉ nên xuất hiện một lần trong phiếu.');
-      return;
-    }
+    const schema = z.object({
+      warehouseId: requiredTextSchema,
+      assigneeId: requiredTextSchema,
+      jobCode: z.string(),
+      jobAddress: z.string(),
+      issuedAt: dateTimeLocalSchema,
+      notes: z.string(),
+      lines: documentLinesSchema(materials, 'issue'),
+    });
+    const validation = schema.safeParse({ warehouseId, assigneeId, jobCode, jobAddress, issuedAt, notes, lines });
+    setValidationError(firstZodError(validation) ?? undefined);
+    if (!validation.success) return;
     const images: ImagePicker.ImagePickerAsset[] = [];
     const payloadLines: Record<string, unknown>[] = [];
-    try {
-      for (const line of lines) {
+    for (const line of validation.data.lines) {
         const material = selectedMaterial(materials, line);
-        if (!material) throw new Error('Có dòng vật tư không còn khả dụng.');
+        if (!material) continue;
         if (material.trackingMode === 'QR') {
-          if (!line.units.length) throw new Error(`${material.materialCode}: thêm ít nhất một QR.`);
           const unitEvidence = line.units.map(entry => {
-            if (!entry.images.length) throw new Error(`${material.materialCode} · ${entry.unit.manufacturerSerial || entry.unit.qrPublicId}: cần ít nhất một ảnh.`);
             images.push(...entry.images);
             return { unitId: entry.unit.id, evidenceCount: entry.images.length };
           });
@@ -470,28 +514,21 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
           });
         } else {
           const quantity = parseQuantity(line.quantity);
-          if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`${material.materialCode}: số lượng phải lớn hơn 0.`);
-          if (!line.images.length) throw new Error(`${material.materialCode}: cần ít nhất một ảnh xuất kho.`);
           images.push(...line.images);
           payloadLines.push({ materialId: line.materialId, quantity, unitIds: [], evidenceCount: line.images.length });
         }
       }
-      if (images.length > 100) throw new Error('Mỗi phiếu xuất hỗ trợ tối đa 100 ảnh.');
-    } catch (error) {
-      Alert.alert('Phiếu xuất chưa hợp lệ', error instanceof Error ? error.message : String(error));
-      return;
-    }
 
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append('payload', JSON.stringify({
-        warehouseId,
-        assigneeId,
-        jobCode: jobCode.trim(),
-        jobAddress: jobAddress.trim(),
-        issuedAt: new Date(issuedAt).toISOString(),
-        notes: notes.trim() || undefined,
+        warehouseId: validation.data.warehouseId,
+        assigneeId: validation.data.assigneeId,
+        jobCode: validation.data.jobCode.trim(),
+        jobAddress: validation.data.jobAddress.trim(),
+        issuedAt: new Date(validation.data.issuedAt).toISOString(),
+        notes: validation.data.notes.trim() || undefined,
         lines: payloadLines,
       }));
       appendMaterialImages(formData, images);
@@ -509,29 +546,40 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
     <ManagementSheet title="Khởi tạo phiếu xuất" saveLabel="Lưu khởi tạo" saving={saving} onClose={onClose} onSave={() => void submit()}>
       {references.isLoading ? <LoadingBlock /> : null}
       {references.isError ? <ErrorState text={getApiErrorMessage(references.error)} onRetry={() => void references.refetch()} /> : null}
+      {validationError ? <Text className="text-caption font-medium text-danger">{validationError}</Text> : null}
       <OptionPicker
         label="Kho xuất *"
+        schema={requiredTextSchema}
         value={warehouseId}
         options={warehouseOptions}
         disabled={saving}
         onChange={value => { setWarehouseId(value); setLines([createLine()]); }}
       />
-      <OptionPicker label="Nhân viên nhận *" value={assigneeId} options={userOptions} disabled={saving || !canAssignOthers} onChange={setAssigneeId} />
+      <OptionPicker label="Nhân viên nhận *" schema={requiredTextSchema} value={assigneeId} options={userOptions} disabled={saving || !canAssignOthers} onChange={setAssigneeId} />
       <FormField label="Mã công trình/Lệnh" value={jobCode} editable={!saving} maxLength={100} onChangeText={setJobCode} />
       <FormField label="Địa chỉ công trình" value={jobAddress} editable={!saving} maxLength={500} onChangeText={setJobAddress} />
-      <FormField label="Ngày giờ xuất *" hint="Định dạng YYYY-MM-DDTHH:mm" value={issuedAt} editable={!saving} maxLength={16} onChangeText={setIssuedAt} />
-      <Text style={styles.sectionTitle}>Vật tư xuất kho</Text>
+      <FormField
+        label="Ngày giờ xuất *"
+        schema={displayDateTimeSchema}
+        hint="Định dạng dd-mm-yyyy HH:mm"
+        value={formatLocalDateTimeInput(issuedAt)}
+        editable={!saving}
+        maxLength={16}
+        onChangeText={value => setIssuedAt(displayDateTimeToLocalIso(value))}
+      />
+      <Text className="mt-1 text-card font-bold text-content">Vật tư xuất kho</Text>
       {lines.map((line, lineIndex) => {
         const material = selectedMaterial(materials, line);
         return (
           <Card key={line.key} tone="soft">
-            <View style={styles.lineHeading}>
-              <Text style={styles.lineTitle}>Dòng {lineIndex + 1}</Text>
+            <View className="flex-row items-center justify-between gap-2.5">
+              <Text className="text-[15px] font-bold text-content">Dòng {lineIndex + 1}</Text>
               {lines.length > 1 ? <AppButton compact tone="danger-outline" label="Xóa dòng" onPress={() => setLines(current => current.filter(item => item.key !== line.key))} /> : null}
             </View>
-            <View style={styles.lineFields}>
+            <View className="mt-3 gap-3">
               <OptionPicker
                 label="Vật tư *"
+                schema={requiredTextSchema}
                 value={line.materialId}
                 options={materialOptions}
                 disabled={saving}
@@ -541,6 +589,7 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
                 <>
                   <FormField
                     label={`Số lượng (${material.unitSymbol}) *`}
+                    schema={positiveQuantitySchema}
                     value={line.quantity}
                     editable={!saving}
                     keyboardType="decimal-pad"
@@ -551,8 +600,8 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
               ) : null}
               {material?.trackingMode === 'QR' ? (
                 <>
-                  <View style={styles.qrRow}>
-                    <View style={styles.qrInput}>
+                  <View className="gap-[9px]">
+                    <View className="flex-1">
                       <FormField
                         label="Mã QR/Serial *"
                         placeholder="Quét hoặc nhập mã QR"
@@ -566,11 +615,11 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
                     <AppButton compact tone="secondary" label="Quét QR" disabled={saving || line.resolvingQr} onPress={() => setScannerLineKey(line.key)} />
                   </View>
                   {line.units.map(entry => (
-                    <View key={entry.unit.id} style={styles.serialBlock}>
-                      <View style={styles.unitHeading}>
-                        <View style={styles.titleWrap}>
-                          <Text style={styles.unitTitle}>{entry.unit.manufacturerSerial || entry.unit.qrPublicId}</Text>
-                          <Text style={styles.unitCode}>{entry.unit.qrPublicId}</Text>
+                    <View key={entry.unit.id} className="gap-2.5 rounded-control border border-border bg-surface p-[11px]">
+                      <View className="flex-row items-start justify-between gap-[9px]">
+                        <View className="flex-1">
+                          <Text className="text-sm font-bold text-content">{entry.unit.manufacturerSerial || entry.unit.qrPublicId}</Text>
+                          <Text className="mt-[3px] text-caption text-primary-dark">{entry.unit.qrPublicId}</Text>
                         </View>
                         <AppButton compact tone="ghost" label="Bỏ" onPress={() => updateLine(line.key, { units: line.units.filter(item => item.unit.id !== entry.unit.id) })} />
                       </View>
@@ -606,27 +655,3 @@ export function CreateMaterialIssueSheet({ onClose, onSaved }: { onClose: () => 
     </ManagementSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 4 },
-  lineHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  lineTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  lineFields: { marginTop: 12, gap: 12 },
-  serialBlock: { padding: 11, borderRadius: ui.radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 10 },
-  evidenceBlock: { gap: 8 },
-  evidenceHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  evidenceLabel: { flex: 1, color: colors.text, fontSize: 12, fontWeight: '600' },
-  evidenceEmpty: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic' },
-  thumbnails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  thumbnailWrap: { width: 68, height: 68 },
-  thumbnail: { width: 68, height: 68, borderRadius: 10, backgroundColor: '#E4E7EC' },
-  removeImage: { position: 'absolute', top: -6, right: -6, width: 23, height: 23, borderRadius: 12, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
-  removeImageText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', lineHeight: 19 },
-  inlineActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  qrRow: { gap: 9 },
-  qrInput: { flex: 1 },
-  unitHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 9 },
-  titleWrap: { flex: 1 },
-  unitTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  unitCode: { color: colors.primaryDark, fontSize: 11, marginTop: 3 },
-});

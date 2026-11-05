@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
+import { z } from 'zod';
 
 import { Screen } from '@/components/screen';
 import {
@@ -17,12 +18,12 @@ import {
 import { permissions } from '@/features/auth/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { api, getApiErrorMessage } from '@/services/api';
-import { colors, ui } from '@/theme/colors';
 import type { ApiResponse } from '@/types/api';
 import type { PaginatedResponse } from '@/types/business';
 import { formatMoney, formatNumber } from '@/utils/format';
 import { pickSpreadsheet, spreadsheetFormData } from '@/utils/document-upload';
 import { FormField, ManagementSheet, OptionPicker } from '@/components/forms/management-form';
+import { decimalStringSchema, requiredTextSchema } from '@/lib/validation';
 
 type ActiveStatus = 'ACTIVE' | 'INACTIVE';
 type TrackingMode = 'QR' | 'QUANTITY';
@@ -38,7 +39,6 @@ interface MeasurementUnitRecord {
   materialCount: number;
   status: ActiveStatus;
 }
-
 interface MaterialRecord {
   id: string;
   materialCode: string;
@@ -51,7 +51,6 @@ interface MaterialRecord {
   requireManufacturerSerial: boolean;
   status: ActiveStatus;
 }
-
 interface MaterialDraft {
   materialCode: string;
   materialName: string;
@@ -83,6 +82,33 @@ const statusOptions = [
   { value: 'ACTIVE', label: 'Hoạt động' },
   { value: 'INACTIVE', label: 'Ngừng sử dụng' },
 ];
+
+const materialPriceSchema = decimalStringSchema({
+  minimum: 0,
+  message: 'Đơn giá phải là số lớn hơn hoặc bằng 0.',
+});
+const materialDraftSchema = z.object({
+  materialCode: requiredTextSchema,
+  materialName: requiredTextSchema,
+  unitId: requiredTextSchema,
+  price: materialPriceSchema,
+  trackingMode: z.enum(['QR', 'QUANTITY']),
+  status: z.enum(['ACTIVE', 'INACTIVE']),
+});
+const decimalScaleSchema = decimalStringSchema({
+  minimum: 0,
+  maximum: 3,
+  integer: true,
+  message: 'Giá trị phải là số nguyên từ 0 đến 3.',
+});
+const unitDraftSchema = z.object({
+  unitCode: requiredTextSchema,
+  unitName: requiredTextSchema,
+  symbol: requiredTextSchema,
+  unitType: z.enum(['COUNT', 'WEIGHT', 'LENGTH', 'AREA', 'VOLUME', 'OTHER']),
+  decimalScale: decimalScaleSchema,
+  status: z.enum(['ACTIVE', 'INACTIVE']),
+});
 
 function parseDecimal(value: string) {
   return Number(value.trim().replace(',', '.'));
@@ -156,28 +182,21 @@ export function MaterialsScreen() {
   };
 
   const save = async () => {
-    const code = draft.materialCode.trim();
-    const name = draft.materialName.trim();
-    const price = parseDecimal(draft.price);
-    if ((!editing && !code) || !name || !draft.unitId) {
-      Alert.alert('Thiếu thông tin', 'Nhập mã, tên vật tư và chọn đơn vị tính.');
-      return;
-    }
-    if (!Number.isFinite(price) || price < 0) {
-      Alert.alert('Đơn giá chưa hợp lệ', 'Đơn giá phải là số lớn hơn hoặc bằng 0.');
-      return;
-    }
+    const validation = materialDraftSchema.safeParse(draft);
+    if (!validation.success) return;
+    const values = validation.data;
+    const price = parseDecimal(values.price);
     setSaving(true);
     try {
       const common = {
-        materialName: name,
-        unitId: draft.unitId,
+        materialName: values.materialName,
+        unitId: values.unitId,
         price,
-        requireManufacturerSerial: draft.trackingMode === 'QR',
-        status: draft.status,
+        requireManufacturerSerial: values.trackingMode === 'QR',
+        status: values.status,
       };
       if (editing) await api.patch(`/material-inventory/materials/${editing.id}`, common);
-      else await api.post('/material-inventory/materials', { materialCode: code, trackingMode: draft.trackingMode, ...common });
+      else await api.post('/material-inventory/materials', { materialCode: values.materialCode, trackingMode: values.trackingMode, ...common });
       setEditing(undefined);
       await queryClient.invalidateQueries({ queryKey: ['mobile-material-catalog'] });
       Alert.alert('Thành công', editing ? 'Đã cập nhật vật tư.' : 'Đã thêm vật tư.');
@@ -225,8 +244,8 @@ export function MaterialsScreen() {
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
-        <View style={styles.compactToolbar}>
-          <View style={styles.compactSearch}>
+        <View className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">
             <SearchField
               placeholder="Tìm mã hoặc tên vật tư..."
               value={searchInput}
@@ -235,7 +254,7 @@ export function MaterialsScreen() {
             />
           </View>
           {can(permissions.materialsCreate) ? (
-            <View style={styles.compactHeaderActions}>
+            <View className="flex-row items-center gap-[7px]">
               <AppButton compact tone="secondary" label="Import" loading={importing} onPress={() => void importCatalog()} />
               <AppButton compact label="Thêm" onPress={openCreate} />
             </View>
@@ -254,36 +273,36 @@ export function MaterialsScreen() {
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có vật tư phù hợp." /> : null}
         {query.data?.data.length ? (
-          <Card style={styles.compactTable}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
-              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Vật tư</Text>
-              <Text style={[styles.tableHeaderText, styles.unitColumn]}>ĐVT</Text>
-              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
-              <View style={styles.actionColumn} />
+          <Card padded={false} className="-mx-page-x overflow-hidden">
+            <View className="min-h-[38px] flex-row items-center gap-2 border-b border-border bg-surface-muted px-2.5">
+              <Text className="min-w-0 flex-[0.65] text-caption font-semibold text-content-muted">Mã</Text>
+              <Text className="min-w-0 flex-[1.25] text-caption font-semibold text-content-muted">Vật tư</Text>
+              <Text className="w-[46px] shrink-0 text-caption font-semibold text-content-muted">ĐVT</Text>
+              <Text className="w-[58px] shrink-0 text-caption font-semibold text-content-muted">Trạng thái</Text>
+              <View className="w-[34px] shrink-0 items-end" />
             </View>
             {query.data.data.map((material, index) => (
               <View
                 key={material.id}
-                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+                className={`min-h-16 flex-row items-center gap-2 px-2.5 ${index < query.data.data.length - 1 ? 'border-b border-border' : ''}`}
               >
-                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>{material.materialCode}</Text>
-                <View style={styles.nameColumn}>
-                  <Text numberOfLines={2} style={styles.tableName}>{material.materialName}</Text>
-                  <Text numberOfLines={1} style={styles.tableMeta}>
+                <Text numberOfLines={2} className="min-w-0 flex-[0.65] text-xs font-bold text-primary-dark">{material.materialCode}</Text>
+                <View className="min-w-0 flex-[1.25]">
+                  <Text numberOfLines={2} className="text-body font-semibold text-content">{material.materialName}</Text>
+                  <Text numberOfLines={1} className="mt-0.5 text-caption text-content-muted">
                     {formatMoney(material.price)} · {material.trackingMode === 'QR' ? 'QR' : 'Số lượng'}
                   </Text>
                 </View>
-                <Text numberOfLines={2} style={[styles.tableUnit, styles.unitColumn]}>
+                <Text numberOfLines={2} className="w-[46px] shrink-0 text-xs font-semibold text-content-secondary">
                   {material.unitSymbol || material.unitName}
                 </Text>
-                <View style={styles.statusColumn}>
+                <View className="w-[58px] shrink-0">
                   <StatusBadge
                     label={material.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
                     tone={material.status === 'ACTIVE' ? 'success' : 'neutral'}
                   />
                 </View>
-                <View style={styles.actionColumn}>
+                <View className="w-[34px] shrink-0 items-end">
                   {can(permissions.materialsUpdate) ? (
                     <ActionMenu
                       label={`Thao tác với ${material.materialName}`}
@@ -307,6 +326,7 @@ export function MaterialsScreen() {
         >
           <FormField
             label="Mã vật tư *"
+            schema={requiredTextSchema}
             value={draft.materialCode}
             editable={!editing && !saving}
             autoCapitalize="characters"
@@ -315,6 +335,7 @@ export function MaterialsScreen() {
           />
           <FormField
             label="Tên vật tư *"
+            schema={requiredTextSchema}
             value={draft.materialName}
             editable={!saving}
             maxLength={200}
@@ -322,6 +343,7 @@ export function MaterialsScreen() {
           />
           <OptionPicker
             label="Đơn vị tính *"
+            schema={requiredTextSchema}
             value={draft.unitId}
             options={unitOptions}
             disabled={saving}
@@ -329,6 +351,7 @@ export function MaterialsScreen() {
           />
           <FormField
             label="Đơn giá *"
+            schema={materialPriceSchema}
             value={draft.price}
             editable={!saving}
             keyboardType="decimal-pad"
@@ -346,7 +369,7 @@ export function MaterialsScreen() {
           />
           {draft.trackingMode === 'QR' ? (
             <Card tone="soft">
-              <Text style={styles.helper}>Vật tư theo QR bắt buộc nhập serial nhà sản xuất và ảnh cho từng serial khi nhập kho.</Text>
+              <Text className="text-body text-content-muted">Vật tư theo QR bắt buộc nhập serial nhà sản xuất và ảnh cho từng serial khi nhập kho.</Text>
             </Card>
           ) : null}
           {editing ? (
@@ -363,7 +386,6 @@ export function MaterialsScreen() {
     </>
   );
 }
-
 export function MeasurementUnitsScreen() {
   const { can } = useAuth();
   const queryClient = useQueryClient();
@@ -407,23 +429,15 @@ export function MeasurementUnitsScreen() {
   };
 
   const save = async () => {
-    const code = draft.unitCode.trim();
-    const name = draft.unitName.trim();
-    const symbol = draft.symbol.trim();
-    const decimalScale = Number(draft.decimalScale);
-    if ((!editing && !code) || !name || !symbol) {
-      Alert.alert('Thiếu thông tin', 'Nhập mã, tên và ký hiệu đơn vị.');
-      return;
-    }
-    if (!Number.isInteger(decimalScale) || decimalScale < 0 || decimalScale > 3) {
-      Alert.alert('Phần thập phân chưa hợp lệ', 'Giá trị phải là số nguyên từ 0 đến 3.');
-      return;
-    }
+    const validation = unitDraftSchema.safeParse(draft);
+    if (!validation.success) return;
+    const values = validation.data;
+    const decimalScale = Number(values.decimalScale);
     setSaving(true);
     try {
-      const common = { unitName: name, symbol, unitType: draft.unitType, decimalScale, status: draft.status };
+      const common = { unitName: values.unitName, symbol: values.symbol, unitType: values.unitType, decimalScale, status: values.status };
       if (editing) await api.patch(`/material-inventory/measurement-units/${editing.id}`, common);
-      else await api.post('/material-inventory/measurement-units', { unitCode: code, ...common });
+      else await api.post('/material-inventory/measurement-units', { unitCode: values.unitCode, ...common });
       setEditing(undefined);
       await queryClient.invalidateQueries({ queryKey: ['mobile-measurement-units'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-measurement-unit-options'] });
@@ -442,8 +456,8 @@ export function MeasurementUnitsScreen() {
         refreshing={query.isRefetching}
         onRefresh={() => void query.refetch()}
       >
-        <View style={styles.compactToolbar}>
-          <View style={styles.compactSearch}>
+        <View className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">
             <SearchField
               placeholder="Tìm mã, tên hoặc ký hiệu..."
               value={searchInput}
@@ -457,34 +471,34 @@ export function MeasurementUnitsScreen() {
         {query.isError ? <ErrorState text={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.isError && !query.data?.data.length ? <EmptyState text="Chưa có đơn vị tính phù hợp." /> : null}
         {query.data?.data.length ? (
-          <Card style={styles.compactTable}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, styles.codeColumn]}>Mã</Text>
-              <Text style={[styles.tableHeaderText, styles.nameColumn]}>Đơn vị</Text>
-              <Text style={[styles.tableHeaderText, styles.unitColumn]}>Ký hiệu</Text>
-              <Text style={[styles.tableHeaderText, styles.statusColumn]}>Trạng thái</Text>
-              <View style={styles.actionColumn} />
+          <Card padded={false} className="-mx-page-x overflow-hidden">
+            <View className="min-h-[38px] flex-row items-center gap-2 border-b border-border bg-surface-muted px-2.5">
+              <Text className="min-w-0 flex-[0.65] text-caption font-semibold text-content-muted">Mã</Text>
+              <Text className="min-w-0 flex-[1.25] text-caption font-semibold text-content-muted">Đơn vị</Text>
+              <Text className="w-[46px] shrink-0 text-caption font-semibold text-content-muted">Ký hiệu</Text>
+              <Text className="w-[58px] shrink-0 text-caption font-semibold text-content-muted">Trạng thái</Text>
+              <View className="w-[34px] shrink-0 items-end" />
             </View>
             {query.data.data.map((unit, index) => (
               <View
                 key={unit.id}
-                style={[styles.tableRow, index < query.data.data.length - 1 && styles.tableRowBorder]}
+                className={`min-h-16 flex-row items-center gap-2 px-2.5 ${index < query.data.data.length - 1 ? 'border-b border-border' : ''}`}
               >
-                <Text numberOfLines={2} style={[styles.tableCode, styles.codeColumn]}>{unit.unitCode}</Text>
-                <View style={styles.nameColumn}>
-                  <Text numberOfLines={2} style={styles.tableName}>{unit.unitName}</Text>
-                  <Text numberOfLines={1} style={styles.tableMeta}>
+                <Text numberOfLines={2} className="min-w-0 flex-[0.65] text-xs font-bold text-primary-dark">{unit.unitCode}</Text>
+                <View className="min-w-0 flex-[1.25]">
+                  <Text numberOfLines={2} className="text-body font-semibold text-content">{unit.unitName}</Text>
+                  <Text numberOfLines={1} className="mt-0.5 text-caption text-content-muted">
                     {unitTypeLabels.get(unit.unitType) ?? unit.unitType} · {formatNumber(unit.decimalScale, 0)} số lẻ · {formatNumber(unit.materialCount, 0)} vật tư
                   </Text>
                 </View>
-                <Text numberOfLines={2} style={[styles.tableUnit, styles.unitColumn]}>{unit.symbol}</Text>
-                <View style={styles.statusColumn}>
+                <Text numberOfLines={2} className="w-[46px] shrink-0 text-xs font-semibold text-content-secondary">{unit.symbol}</Text>
+                <View className="w-[58px] shrink-0">
                   <StatusBadge
                     label={unit.status === 'ACTIVE' ? 'Dùng' : 'Ngừng'}
                     tone={unit.status === 'ACTIVE' ? 'success' : 'neutral'}
                   />
                 </View>
-                <View style={styles.actionColumn}>
+                <View className="w-[34px] shrink-0 items-end">
                   {can(permissions.measurementUnitsUpdate) ? (
                     <ActionMenu
                       label={`Thao tác với ${unit.unitName}`}
@@ -509,6 +523,7 @@ export function MeasurementUnitsScreen() {
           <FormField
             label="Mã đơn vị *"
             placeholder="CAI, KG, M"
+            schema={requiredTextSchema}
             value={draft.unitCode}
             editable={!editing && !saving}
             autoCapitalize="characters"
@@ -517,6 +532,7 @@ export function MeasurementUnitsScreen() {
           />
           <FormField
             label="Tên đơn vị *"
+            schema={requiredTextSchema}
             value={draft.unitName}
             editable={!saving}
             maxLength={100}
@@ -524,6 +540,7 @@ export function MeasurementUnitsScreen() {
           />
           <FormField
             label="Ký hiệu *"
+            schema={requiredTextSchema}
             value={draft.symbol}
             editable={!saving}
             maxLength={30}
@@ -531,6 +548,7 @@ export function MeasurementUnitsScreen() {
           />
           <FormField
             label="Phần thập phân *"
+            schema={decimalScaleSchema}
             hint="0 nếu chỉ cho phép số nguyên; tối đa 3 chữ số sau dấu thập phân."
             value={draft.decimalScale}
             editable={!saving}
@@ -559,33 +577,3 @@ export function MeasurementUnitsScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  compactToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  compactSearch: { flex: 1, minWidth: 0 },
-  compactHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  compactTable: { padding: 0, overflow: 'hidden' },
-  tableHeader: {
-    minHeight: 38,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceMuted,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderText: { color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '600' },
-  tableRow: { minHeight: 64, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  codeColumn: { flex: 0.65, minWidth: 0 },
-  nameColumn: { flex: 1.25, minWidth: 0 },
-  unitColumn: { width: 46, flexShrink: 0 },
-  statusColumn: { width: 58, flexShrink: 0 },
-  actionColumn: { width: ui.compactControlHeight, flexShrink: 0, alignItems: 'flex-end' },
-  tableCode: { color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  tableName: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  tableMeta: { color: colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 2 },
-  tableUnit: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '600' },
-  helper: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
-});
