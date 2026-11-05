@@ -346,7 +346,9 @@ export default function ChatScreen() {
           formData.append('images', asset.file, fileName);
           return;
         }
-        formData.append('images', new ExpoFile(asset.uri), fileName);
+        const file = new ExpoFile(asset.uri);
+        if (!file.exists) throw new Error(`Không thể đọc ảnh số ${index + 1} trên thiết bị.`);
+        formData.append('images', file, fileName);
       });
 
       let message: DirectMessage;
@@ -376,9 +378,18 @@ export default function ChatScreen() {
             },
           );
           const responseText = await response.text();
-          const payload = responseText
-            ? JSON.parse(responseText) as ApiResponse<DirectMessage> & { errors?: Record<string, string[]> }
-            : undefined;
+          let payload: (ApiResponse<DirectMessage> & { errors?: Record<string, string[]> }) | undefined;
+          if (responseText) {
+            try {
+              payload = JSON.parse(responseText) as ApiResponse<DirectMessage> & { errors?: Record<string, string[]> };
+            } catch {
+              throw new Error(
+                response.ok
+                  ? 'Máy chủ trả về dữ liệu không hợp lệ sau khi gửi ảnh.'
+                  : `Máy chủ từ chối yêu cầu gửi ảnh (${response.status}).`,
+              );
+            }
+          }
           if (!response.ok || !payload?.success || !payload.data) {
             const fieldError = payload?.errors
               ? Object.values(payload.errors).flat().find(Boolean)
