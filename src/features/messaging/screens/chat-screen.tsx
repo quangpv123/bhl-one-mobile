@@ -22,7 +22,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import type { ViewInstance } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
@@ -207,9 +206,6 @@ export default function ChatScreen() {
   const [sendingImages, setSendingImages] = useState(false);
   const [imagePreview, setImagePreview] = useState<MessageImagePreview>();
   const [previewViewportHeight, setPreviewViewportHeight] = useState(0);
-  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
-  const [composerHeight, setComposerHeight] = useState(56);
-  const chatBodyRef = useRef<ViewInstance>(null);
   const listRef = useRef<FlatList<DirectMessage>>(null);
   const initialScrollDoneRef = useRef(false);
   const stickToBottomRef = useRef(initialUnreadCount === 0);
@@ -236,41 +232,15 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const keyboardEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const showSubscription = Keyboard.addListener(keyboardEvent, event => {
-      const scrollToBottom = () => {
-        if (!stickToBottomRef.current) return;
-        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
-      };
-
-      if (Platform.OS !== 'android') {
-        scrollToBottom();
-        return;
-      }
-
+    const showSubscription = Keyboard.addListener(keyboardEvent, () => {
+      if (!stickToBottomRef.current) return;
       requestAnimationFrame(() => {
-        chatBodyRef.current?.measureInWindow((_x, y, _width, height) => {
-          const keyboardInset = Math.max(0, Math.round(y + height - event.endCoordinates.screenY));
-          setAndroidKeyboardInset(keyboardInset);
-          requestAnimationFrame(scrollToBottom);
-        });
+        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
       });
     });
 
-    const hideSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setAndroidKeyboardInset(0),
-    );
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
+    return () => showSubscription.remove();
   }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'android' || androidKeyboardInset <= 0 || !stickToBottomRef.current) return;
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
-  }, [androidKeyboardInset, composerHeight]);
 
   useEffect(() => {
     const socket = createMessagingSocket(token);
@@ -500,15 +470,9 @@ export default function ChatScreen() {
         </View>
       </View>
       <SafeAreaView className="flex-1 bg-white" edges={['right', 'bottom', 'left']}>
-      <View
-        ref={chatBodyRef}
-        collapsable={false}
-        className="flex-1 bg-primary-soft"
-      >
         <KeyboardAvoidingView
           className="flex-1 bg-primary-soft"
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          enabled={Platform.OS === 'ios'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={insets.top + CHAT_HEADER_HEIGHT}
         >
         <FlatList
@@ -516,11 +480,7 @@ export default function ChatScreen() {
           data={messages.data || []}
           keyExtractor={item => item.id}
           contentContainerClassName="flex-grow justify-end px-2.5 pt-3"
-          contentContainerStyle={
-            Platform.OS === 'android' && type !== 'SYSTEM'
-              ? { paddingBottom: androidKeyboardInset + composerHeight + 12 }
-              : { paddingBottom: 12 }
-          }
+          contentContainerStyle={{ paddingBottom: 12 }}
           initialNumToRender={50}
           maxToRenderPerBatch={50}
           keyboardShouldPersistTaps="handled"
@@ -602,25 +562,7 @@ export default function ChatScreen() {
             <Text className="text-body text-content-muted">Kênh thông báo hệ thống chỉ cho phép đọc.</Text>
           </View>
         ) : (
-          <View
-            className="border-t border-border-subtle bg-white"
-            onLayout={event => {
-              const nextHeight = Math.ceil(event.nativeEvent.layout.height);
-              setComposerHeight(current => current === nextHeight ? current : nextHeight);
-            }}
-            style={
-              Platform.OS === 'android'
-                ? {
-                    position: 'absolute',
-                    right: 0,
-                    bottom: androidKeyboardInset,
-                    left: 0,
-                    zIndex: 10,
-                    elevation: 10,
-                  }
-                : undefined
-            }
-          >
+          <View className="border-t border-border-subtle bg-white">
             {selectedImages.length ? (
               <View className="flex-row items-center border-b border-border-subtle px-2 py-2">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-2">
@@ -710,7 +652,6 @@ export default function ChatScreen() {
           </View>
         )}
         </KeyboardAvoidingView>
-      </View>
       </SafeAreaView>
       <Modal
         animationType="fade"
