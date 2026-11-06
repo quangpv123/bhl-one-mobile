@@ -1,4 +1,4 @@
-import Constants, { ExecutionEnvironment } from 'expo-constants';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -17,10 +17,12 @@ const enabledPreference = 'enabled';
 const disabledPreference = 'disabled';
 const notificationChannelId = 'messages';
 
-// Expo Go does not include the native remote notification runtime on Android.
-// `expoVersion` can be present outside Expo Go on some standalone builds, so
-// rely on the explicit runtime environment instead.
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+// Remote push is unavailable in Expo Go on Android. A development build can
+// share the StoreClient execution environment, so only use Expo Go-specific
+// values here and keep push enabled in development/preview/release builds.
+const isExpoGo = Constants.expoGoConfig != null
+  || Constants.appOwnership === 'expo'
+  || Constants.expoVersion != null;
 let activeRegistration: Promise<PushNotificationState> | undefined;
 
 function supportsNativePush() {
@@ -204,13 +206,17 @@ export function usePushNotificationRegistration(userId?: string) {
       }
     });
 
-    void import('expo-notifications').then(Notifications => {
-      if (disposed) return;
-      const subscription = Notifications.addPushTokenListener(() => {
-        void synchronize().catch(error => console.warn('Chưa thể cập nhật token thông báo.', error));
+    void import('expo-notifications')
+      .then(Notifications => {
+        if (disposed) return;
+        const subscription = Notifications.addPushTokenListener(() => {
+          void synchronize().catch(error => console.warn('Chưa thể cập nhật token thông báo.', error));
+        });
+        removeTokenListener = () => subscription.remove();
+      })
+      .catch(error => {
+        console.warn('Không thể lắng nghe thay đổi token thông báo.', error);
       });
-      removeTokenListener = () => subscription.remove();
-    });
 
     return () => {
       disposed = true;

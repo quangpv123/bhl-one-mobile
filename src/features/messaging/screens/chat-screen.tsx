@@ -12,7 +12,6 @@ import {
   FlatList,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -22,6 +21,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/app-icon';
@@ -348,6 +348,9 @@ export default function ChatScreen() {
             },
           );
           const responseText = await response.text();
+          if (response.status === 413) {
+            throw new Error('Dung lượng ảnh gửi lên quá lớn. Vui lòng chọn ảnh nhỏ hơn hoặc thử gửi ít ảnh hơn.');
+          }
           let payload: (ApiResponse<DirectMessage> & { errors?: Record<string, string[]> }) | undefined;
           if (responseText) {
             try {
@@ -471,9 +474,9 @@ export default function ChatScreen() {
       </View>
       <SafeAreaView className="flex-1 bg-white" edges={['right', 'bottom', 'left']}>
         <KeyboardAvoidingView
-          className="flex-1 bg-primary-soft"
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={insets.top + CHAT_HEADER_HEIGHT}
+          style={{ flex: 1, backgroundColor: colors.primarySoft }}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === 'android' ? insets.top + CHAT_HEADER_HEIGHT : 0}
         >
         <FlatList
           ref={listRef}
