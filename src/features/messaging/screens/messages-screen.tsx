@@ -75,7 +75,6 @@ function conversationTime(value: string) {
 }
 const groupNameSchema = z.string().trim().min(2, 'Tên nhóm phải có ít nhất 2 ký tự.');
 const recipientSelectionSchema = z.array(z.string()).min(1, 'Chọn ít nhất một người nhận.');
-const botSelectionSchema = z.string().min(1, 'Chọn một bot hệ thống.');
 
 export default function MessagesScreen() {
   const { token, user, can } = useAuth();
@@ -234,7 +233,7 @@ export default function MessagesScreen() {
             </Pressable>
           ) : null}
           <Pressable
-            accessibilityLabel="Tạo tin nhắn mới"
+            accessibilityLabel="Tạo nhóm trò chuyện"
             accessibilityRole="button"
             hitSlop={8}
             onPress={() => setCreateOpen(true)}
@@ -422,16 +421,13 @@ function CreateConversationModal({
   onClose: () => void;
   onCreated: (id: string, title: string, type: MessageConversation['conversationType']) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'direct' | 'group' | 'bot'>('direct');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedBotCode, setSelectedBotCode] = useState('');
   const [groupName, setGroupName] = useState('');
   const [saving, setSaving] = useState(false);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const recipients = useQuery({
     queryKey: ['message-recipients-mobile', search],
-    enabled: mode !== 'bot',
     queryFn: async () =>
       (
         await api.get<ApiResponse<MessageRecipient[]>>('/messages/recipients', {
@@ -439,59 +435,31 @@ function CreateConversationModal({
         })
       ).data.data,
   });
-  const bots = useQuery({
-    queryKey: ['message-system-bots'],
-    enabled: mode === 'bot',
-    queryFn: async () => (await api.get<ApiResponse<SystemBotSummary[]>>('/messages/bots')).data.data,
-  });
 
   const toggleRecipient = (id: string) => {
-    if (mode === 'direct') setSelectedIds([id]);
-    else setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+    setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
   };
 
   const create = async () => {
     setValidationAttempted(true);
-    if (mode === 'bot') {
-      if (!botSelectionSchema.safeParse(selectedBotCode).success) return;
-      setSaving(true);
-      try {
-        const response = await api.post<ApiResponse<{ id: string }>>(`/messages/bots/${encodeURIComponent(selectedBotCode)}/conversation`);
-        const bot = bots.data?.find(item => item.botCode === selectedBotCode);
-        await onCreated(response.data.data.id, bot?.botName || 'Thông báo hệ thống', 'SYSTEM');
-      } catch (error) {
-        Alert.alert('Không thể mở kênh bot', getApiErrorMessage(error));
-      } finally {
-        setSaving(false);
-      }
-      return;
-    }
     if (!recipientSelectionSchema.safeParse(selectedIds).success) return;
-    if (mode === 'group' && !groupNameSchema.safeParse(groupName).success) return;
+    if (!groupNameSchema.safeParse(groupName).success) return;
     setSaving(true);
     try {
-      const response = mode === 'direct'
-        ? await api.post<ApiResponse<{ id: string }>>('/messages/conversations', { recipientUserId: selectedIds[0] })
-        : await api.post<ApiResponse<{ id: string }>>('/messages/conversations/group', {
-            name: groupName.trim(),
-            memberUserIds: selectedIds,
-          });
-      const recipient = recipients.data?.find(item => item.id === selectedIds[0]);
-      await onCreated(
-        response.data.data.id,
-        mode === 'group' ? groupName.trim() : recipient?.fullName || 'Tin nhắn',
-        mode === 'group' ? 'GROUP' : 'DIRECT',
-      );
+      const response = await api.post<ApiResponse<{ id: string }>>('/messages/conversations/group', {
+        name: groupName.trim(),
+        memberUserIds: selectedIds,
+      });
+      await onCreated(response.data.data.id, groupName.trim(), 'GROUP');
     } catch (error) {
-      Alert.alert('Không thể tạo cuộc trò chuyện', getApiErrorMessage(error));
+      Alert.alert('Không thể tạo nhóm trò chuyện', getApiErrorMessage(error));
     } finally {
       setSaving(false);
     }
   };
 
   const groupNameInvalid = validationAttempted && !groupNameSchema.safeParse(groupName).success;
-  const recipientsInvalid = validationAttempted && mode !== 'bot' && !recipientSelectionSchema.safeParse(selectedIds).success;
-  const botInvalid = validationAttempted && mode === 'bot' && !botSelectionSchema.safeParse(selectedBotCode).success;
+  const recipientsInvalid = validationAttempted && !recipientSelectionSchema.safeParse(selectedIds).success;
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -499,42 +467,28 @@ function CreateConversationModal({
         <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View className="min-h-header flex-row items-center justify-between border-b border-border bg-surface px-3">
             <Pressable onPress={onClose}><Text className="text-sm font-semibold text-content-muted">Hủy</Text></Pressable>
-            <Text className="text-base font-bold text-content">Tin nhắn mới</Text>
+            <Text className="text-base font-bold text-content">Tạo nhóm mới</Text>
             <Pressable disabled={saving} onPress={() => void create()}><Text className="text-sm font-semibold text-primary">Tạo</Text></Pressable>
           </View>
           <ScrollView contentContainerClassName="gap-3 p-3" keyboardShouldPersistTaps="handled">
-            <ChoiceChips
-              value={mode}
-              options={[
-                { value: 'direct', label: 'Cá nhân' },
-                { value: 'group', label: 'Nhóm' },
-                { value: 'bot', label: 'Bot hệ thống' },
-              ]}
-              onChange={value => { setMode(value); setSelectedIds([]); setSelectedBotCode(''); setValidationAttempted(false); }}
+            <TextInput
+              value={groupName}
+              onChangeText={setGroupName}
+              placeholder="Tên nhóm trò chuyện"
+              placeholderTextColor={colors.textPlaceholder}
+              className={`h-control rounded-control border bg-surface px-3 py-0 text-content ${groupNameInvalid ? 'border-danger bg-danger-soft' : 'border-border'}`}
+              style={{ textAlignVertical: 'center', includeFontPadding: false }}
             />
-            {mode === 'group' ? (
-              <TextInput
-                value={groupName}
-                onChangeText={setGroupName}
-                placeholder="Tên nhóm trò chuyện"
-                placeholderTextColor={colors.textPlaceholder}
-                className={`h-control rounded-control border bg-surface px-3 py-0 text-content ${groupNameInvalid ? 'border-danger bg-danger-soft' : 'border-border'}`}
-                style={{ textAlignVertical: 'center', includeFontPadding: false }}
-              />
-            ) : null}
-            {mode === 'group' && groupNameInvalid ? (
+            {groupNameInvalid ? (
               <Text className="text-caption font-medium leading-[15px] text-danger">Tên nhóm phải có ít nhất 2 ký tự.</Text>
             ) : null}
-            {mode !== 'bot' ? <SearchField placeholder="Tìm theo tên, tài khoản..." value={search} onChangeText={setSearch} /> : null}
+            <SearchField placeholder="Tìm thành viên theo tên, tài khoản..." value={search} onChangeText={setSearch} />
             {recipientsInvalid ? (
-              <Text className="text-caption font-medium leading-[15px] text-danger">Chọn ít nhất một người nhận.</Text>
+              <Text className="text-caption font-medium leading-[15px] text-danger">Chọn ít nhất một thành viên.</Text>
             ) : null}
-            {botInvalid ? (
-              <Text className="text-caption font-medium leading-[15px] text-danger">Chọn một bot hệ thống.</Text>
-            ) : null}
-            {mode !== 'bot' && recipients.isLoading ? <LoadingBlock /> : null}
-            {mode !== 'bot' && recipients.isError ? <ErrorState text={getApiErrorMessage(recipients.error)} onRetry={() => void recipients.refetch()} /> : null}
-            {mode !== 'bot' ? recipients.data?.map(recipient => {
+            {recipients.isLoading ? <LoadingBlock /> : null}
+            {recipients.isError ? <ErrorState text={getApiErrorMessage(recipients.error)} onRetry={() => void recipients.refetch()} /> : null}
+            {recipients.data?.map(recipient => {
               const selected = selectedIds.includes(recipient.id);
               return (
                 <Pressable
@@ -550,26 +504,7 @@ function CreateConversationModal({
                   {selected ? <StatusBadge label="Đã chọn" tone="info" /> : null}
                 </Pressable>
               );
-            }) : null}
-            {mode === 'bot' && bots.isLoading ? <LoadingBlock /> : null}
-            {mode === 'bot' && bots.isError ? <ErrorState text={getApiErrorMessage(bots.error)} onRetry={() => void bots.refetch()} /> : null}
-            {mode === 'bot' ? bots.data?.map(bot => {
-              const selected = selectedBotCode === bot.botCode;
-              return (
-                <Pressable
-                  key={bot.botCode}
-                  onPress={() => setSelectedBotCode(bot.botCode)}
-                  className={`min-h-[62px] flex-row items-center gap-2.5 rounded-control border p-2.5 ${selected ? 'border-primary-border bg-primary-soft' : 'border-border bg-surface'}`}
-                >
-                  <View className="h-10 w-10 items-center justify-center rounded-[10px] bg-violet-100"><Text className="font-bold text-primary-dark">◈</Text></View>
-                  <View className="flex-1">
-                    <Text className="font-bold text-content">{bot.botName}</Text>
-                    <Text className="mt-1 text-xs text-content-muted">{bot.description}</Text>
-                  </View>
-                  {selected ? <StatusBadge label="Đã chọn" tone="info" /> : null}
-                </Pressable>
-              );
-            }) : null}
+            })}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

@@ -46,6 +46,36 @@ const CHAT_HEADER_HEIGHT = 56;
 const messageImageCache = new Map<string, string>();
 const messageImageDownloads = new Map<string, Promise<string>>();
 
+function messageDateKey(value: string | null | undefined) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function previousDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  if (!year || !month || !day) return '';
+  return new Date(Date.UTC(year, month - 1, day) - 86_400_000).toISOString().slice(0, 10);
+}
+
+function messageDateLabel(value: string | null | undefined) {
+  const dateKey = messageDateKey(value);
+  if (!dateKey) return '';
+
+  const todayKey = messageDateKey(new Date().toISOString());
+  if (dateKey === todayKey) return 'Hôm nay';
+  if (dateKey === previousDateKey(todayKey)) return 'Hôm qua';
+
+  const [year, month, day] = dateKey.split('-');
+  return `${day}-${month}-${year}`;
+}
+
 function getMessageImageMimeType(asset: ImagePicker.ImagePickerAsset) {
   const mimeType = asset.mimeType?.toLowerCase();
   if (mimeType === 'image/jpg') return 'image/jpeg';
@@ -199,6 +229,8 @@ export default function ChatScreen() {
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const messageImageGridWidth = Math.max(180, Math.floor(windowWidth * 0.8));
+  const messageImageThumbnailSize = Math.floor((messageImageGridWidth - 8) / 3);
   const initialUnreadCount = Math.max(0, Number.parseInt(unreadCount || '0', 10) || 0);
   const queryClient = useQueryClient();
   const [text, setText] = useState('');
@@ -309,7 +341,6 @@ export default function ChatScreen() {
     setSendingImages(true);
     try {
       const formData = new FormData();
-      if (content) formData.append('content', content);
       selectedImages.forEach((asset, index) => {
         const fileName = asset.fileName || `message-${index + 1}.jpg`;
         if (Platform.OS === 'web' && asset.file) {
@@ -381,7 +412,17 @@ export default function ChatScreen() {
       stickToBottomRef.current = true;
       queryClient.setQueryData<DirectMessage[]>(['messages', id], current => [...(current || []), message]);
       setSelectedImages([]);
-      setText('');
+
+      if (content) {
+        try {
+          await send.mutateAsync(content);
+        } catch (error) {
+          Alert.alert('Ảnh đã được gửi', `Không thể gửi nội dung kèm theo. ${getApiErrorMessage(error)}`);
+          return false;
+        }
+      } else {
+        setText('');
+      }
       return true;
     } catch (error) {
       Alert.alert('Không thể gửi ảnh', getApiErrorMessage(error));
@@ -476,7 +517,7 @@ export default function ChatScreen() {
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: colors.primarySoft }}
           behavior="padding"
-          keyboardVerticalOffset={Platform.OS === 'android' ? insets.top + CHAT_HEADER_HEIGHT : 0}
+          keyboardVerticalOffset={insets.top + CHAT_HEADER_HEIGHT}
         >
         <FlatList
           ref={listRef}
@@ -507,10 +548,27 @@ export default function ChatScreen() {
               listRef.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 0 });
             }, 80);
           }}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const mine = item.senderUserId === user?.id;
+            const hasAttachments = Boolean(item.attachments?.length);
+            const previousMessage = index > 0 ? messages.data?.[index - 1] : undefined;
+            const showDateSeparator = !previousMessage
+              || messageDateKey(previousMessage.createdAt) !== messageDateKey(item.createdAt);
             return (
-              <View className={`mb-1.5 flex-row items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+              <View>
+                {showDateSeparator ? (
+                  <View
+                    accessibilityRole="header"
+                    className="mb-3 mt-2 items-center"
+                  >
+                    <View className="rounded-full bg-[#DCE6F2] px-3 py-1">
+                      <Text className="text-[11px] font-medium text-[#64748B]">
+                        {messageDateLabel(item.createdAt)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                <View className={`mb-1.5 flex-row items-start gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
                 {!mine ? (
                   <View className="h-7 w-7 items-center justify-center rounded-full bg-primary">
                     <Text className="text-[9px] font-bold text-white">{initials(item.senderFullName)}</Text>
@@ -518,21 +576,34 @@ export default function ChatScreen() {
                 ) : null}
                 <View className={`max-w-[80%] ${mine ? 'items-end' : 'items-start'}`}>
                   {!mine && type === 'GROUP' ? (
-                    <Text className="mb-1 ml-1 text-caption font-semibold text-content-muted">{item.senderFullName}</Text>
+                    <Text className="mb-1 ml-1 text-caption font-normal text-content-muted">{item.senderFullName}</Text>
                   ) : null}
-                  <View
-                    className={`min-w-[74px] px-3 py-2 ${mine ? 'rounded-[16px] rounded-br-[5px] bg-[#DBEAFE]' : 'rounded-[16px] rounded-bl-[5px] bg-white'}`}
-                    style={{
-                      shadowColor: '#0F172A',
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.07,
-                      shadowRadius: 2,
-                      elevation: 1,
-                    }}
-                  >
-                    {item.content ? <Text className="text-[15px] leading-[21px] text-[#172033]">{item.content}</Text> : null}
-                    {item.attachments?.length ? (
-                      <View className={`mt-1 flex-row flex-wrap gap-1 ${item.attachments.length > 1 ? 'w-[220px]' : ''}`}>
+                  {item.content || !hasAttachments ? (
+                    <View
+                      className={`min-w-[74px] px-3 py-2 ${mine ? 'rounded-[16px] rounded-br-[5px] bg-[#DBEAFE]' : 'rounded-[16px] rounded-bl-[5px] bg-white'}`}
+                      style={{
+                        shadowColor: '#0F172A',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.07,
+                        shadowRadius: 2,
+                        elevation: 1,
+                      }}
+                    >
+                      {item.content ? <Text className="text-[15px] leading-[21px] text-[#172033]">{item.content}</Text> : null}
+                      {!item.content && !hasAttachments ? (
+                        <Text className="text-[15px] leading-[21px] text-content">Thông báo hệ thống</Text>
+                      ) : null}
+                      {!hasAttachments ? (
+                        <Text className="mt-1 self-end text-[10px] leading-3 text-[#84909B]">{formatTime(item.createdAt)}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {item.attachments?.length ? (
+                    <>
+                      <View
+                        className={`${item.content ? 'mt-1' : ''} flex-row flex-wrap gap-1 ${mine ? 'justify-end' : 'justify-start'}`}
+                        style={item.attachments.length > 1 ? { width: messageImageGridWidth } : undefined}
+                      >
                         {item.attachments.map(attachment => (
                           <Pressable
                             key={attachment.id}
@@ -544,17 +615,20 @@ export default function ChatScreen() {
                               attachment={attachment}
                               token={token}
                               resizeMode="cover"
-                              className={`${item.attachments!.length > 1 ? 'h-[108px] w-[108px]' : 'h-[180px] w-[220px]'} rounded-[12px] bg-gray-200`}
+                              dimensions={item.attachments!.length > 1
+                                ? { width: messageImageThumbnailSize, height: messageImageThumbnailSize }
+                                : undefined}
+                              className={`${item.attachments!.length > 1 ? '' : 'h-[180px] w-[220px]'} rounded-[12px] bg-gray-200`}
                             />
                           </Pressable>
                         ))}
                       </View>
-                    ) : null}
-                    {!item.content && !item.attachments?.length ? (
-                      <Text className="text-[15px] leading-[21px] text-content">Thông báo hệ thống</Text>
-                    ) : null}
-                    <Text className="mt-1 self-end text-[10px] leading-3 text-[#84909B]">{formatTime(item.createdAt)}</Text>
-                  </View>
+                      <Text className={`mt-1 text-[10px] leading-3 text-[#84909B] ${mine ? 'mr-1' : 'ml-1'}`}>
+                        {formatTime(item.createdAt)}
+                      </Text>
+                    </>
+                  ) : null}
+                </View>
                 </View>
               </View>
             );
