@@ -36,12 +36,15 @@ export type AppIconName =
   | "scan"
   | "settings"
   | "logout"
+  | "notifications"
+  | "chevron-right"
   | "download"
   | "image"
   | "like"
   | "send"
   | "search"
-  | "more";
+  | "more"
+  | "change-password";
 
 const symbolNames: Record<AppIconName, SymbolViewProps["name"]> = {
   home: { ios: "house.fill", android: "home", web: "home" },
@@ -132,6 +135,16 @@ const symbolNames: Record<AppIconName, SymbolViewProps["name"]> = {
     android: "logout",
     web: "logout",
   },
+  notifications: {
+    ios: "bell",
+    android: "notifications_none",
+    web: "notifications_none",
+  },
+  "chevron-right": {
+    ios: "chevron.right",
+    android: "chevron_right",
+    web: "chevron_right",
+  },
   download: {
     ios: "arrow.down.doc.fill",
     android: "file_download",
@@ -142,6 +155,7 @@ const symbolNames: Record<AppIconName, SymbolViewProps["name"]> = {
   send: { ios: "paperplane.fill", android: "send", web: "send" },
   search: { ios: "magnifyingglass", android: "search", web: "search" },
   more: { ios: "ellipsis", android: "more_horiz", web: "more_horiz" },
+  "change-password": { ios: "key.fill", android: "lock", web: "lock" },
 };
 
 const fallbackGlyphs: Record<AppIconName, string> = {
@@ -173,12 +187,15 @@ const fallbackGlyphs: Record<AppIconName, string> = {
   scan: "◎",
   settings: "⚙",
   logout: "↪",
+  notifications: "◉",
+  "chevron-right": "›",
   download: "↓",
   image: "▧",
   like: "👍",
   send: "➤",
   search: "⌕",
   more: "•••",
+  "change-password": "🔒",
 };
 
 export function AppIcon({

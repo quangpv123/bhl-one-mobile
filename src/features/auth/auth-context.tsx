@@ -1,4 +1,4 @@
-import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, setApiAccessToken, setUnauthorizedHandler, usesBrowserSession } from '@/services/api';
 import {
@@ -27,8 +27,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const sessionActiveRef = useRef(false);
+  const logoutPromiseRef = useRef<Promise<void> | null>(null);
 
   const clearSession = useCallback(async () => {
+    if (!sessionActiveRef.current) return;
+    sessionActiveRef.current = false;
     setApiAccessToken(null);
     setToken(null);
     setUser(null);
@@ -44,6 +48,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const restoreSession = async () => {
       const storedToken = await getStoredAccessToken();
       if (!usesBrowserSession && !storedToken) return;
+      sessionActiveRef.current = true;
       setApiAccessToken(storedToken);
       try {
         const response = await api.get<ApiResponse<User>>('/auth/me');
@@ -65,6 +70,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       await storeAccessToken(nextToken);
     }
     await storeLoginIdentifier(username.trim()).catch(() => undefined);
+    sessionActiveRef.current = true;
     setApiAccessToken(nextToken);
     setToken(nextToken);
     setUser(response.data.data.user);
@@ -76,9 +82,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const logout = useCallback(async () => {
-    await unregisterCurrentPushToken().catch(() => undefined);
-    await api.post('/auth/logout').catch(() => undefined);
-    await clearSession();
+    if (logoutPromiseRef.current) return logoutPromiseRef.current;
+
+    const logoutPromise = (async () => {
+      try {
+        await unregisterCurrentPushToken().catch(() => undefined);
+        await api.post('/auth/logout').catch(() => undefined);
+      } finally {
+        await clearSession();
+      }
+    })();
+
+    logoutPromiseRef.current = logoutPromise;
+    try {
+      await logoutPromise;
+    } finally {
+      if (logoutPromiseRef.current === logoutPromise) logoutPromiseRef.current = null;
+    }
   }, [clearSession]);
 
   const value = useMemo<AuthContextValue>(

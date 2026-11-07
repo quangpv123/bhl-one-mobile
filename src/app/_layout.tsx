@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
@@ -18,6 +19,17 @@ const queryClient = new QueryClient({
 
 function RootNavigator() {
   const { loading, user } = useAuth();
+  const segments = useSegments();
+  const firstSegment = segments[0] as string | undefined;
+
+  useEffect(() => {
+    if (loading || !firstSegment) return;
+    if (!user && firstSegment !== 'login') {
+      router.replace('/login');
+      return;
+    }
+    if (user && firstSegment === 'login') router.replace('/(app)');
+  }, [firstSegment, loading, user]);
 
   if (loading) {
     return (
@@ -39,16 +51,12 @@ function RootNavigator() {
           contentStyle: { backgroundColor: colors.background },
         }}
       >
-        <Stack.Protected guard={!user}>
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-        </Stack.Protected>
-        <Stack.Protected guard={Boolean(user)}>
-          <Stack.Screen name="(app)" options={{ headerShown: false }} />
-          <Stack.Screen name="chat/[id]" options={{ title: 'Tin nhắn' }} />
-          <Stack.Screen name="feature/[key]" options={{ headerShown: false }} />
-          <Stack.Screen name="purchase-warehouse/[id]" options={{ headerShown: false }} />
-          <Stack.Screen name="material-record/[kind]/[id]" options={{ headerShown: false }} />
-        </Stack.Protected>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="(app)" options={{ headerShown: false }} />
+        <Stack.Screen name="chat/[id]" options={{ title: 'Tin nhắn' }} />
+        <Stack.Screen name="feature/[key]" options={{ headerShown: false }} />
+        <Stack.Screen name="purchase-warehouse/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="material-record/[kind]/[id]" options={{ headerShown: false }} />
       </Stack>
     </>
   );

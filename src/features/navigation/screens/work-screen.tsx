@@ -35,7 +35,12 @@ export default function WorkScreen() {
                   <View className="mb-[7px] h-8 w-8 items-center justify-center rounded-compact bg-primary-soft">
                     <AppIcon name={feature.icon} color={colors.primary} size={18} />
                   </View>
-                  <Text numberOfLines={2} className="text-center text-caption font-semibold text-content">{feature.title}</Text>
+                  <Text
+                    numberOfLines={2}
+                    className="min-h-[30px] w-full text-center text-caption font-semibold leading-[15px] text-content"
+                  >
+                    {feature.title}
+                  </Text>
                 </Pressable>
               ))}
             </View>

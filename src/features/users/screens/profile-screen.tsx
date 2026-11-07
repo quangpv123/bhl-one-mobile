@@ -9,16 +9,18 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { z } from "zod";
 
+import { AppIcon } from "@/components/app-icon";
 import { FormLabel } from "@/components/forms/management-form";
 import { PasswordInput } from "@/components/forms/password-input";
 import { Screen } from "@/components/screen";
-import { AppButton, Card, InfoRow, StatusBadge } from "@/components/ui";
+import { Card, InfoRow, StatusBadge } from "@/components/ui";
 import { useAuth } from "@/features/auth/auth-context";
 import {
   passwordSchema,
@@ -73,7 +75,7 @@ export default function ProfileScreen() {
   }, []);
 
   const confirmLogout = () => {
-    Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất khỏi BHL One?", [
+    Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất khỏi BHL Work?", [
       { text: "Hủy", style: "cancel" },
       { text: "Đăng xuất", style: "destructive", onPress: () => void logout() },
     ]);
@@ -107,7 +109,7 @@ export default function ProfileScreen() {
       if (nextState !== "enabled") {
         Alert.alert(
           "Chưa bật thông báo",
-          "Vui lòng cho phép BHL One gửi thông báo trong cài đặt thiết bị.",
+          "Vui lòng cho phép BHL Work gửi thông báo trong cài đặt thiết bị.",
         );
       }
     } catch (error) {
@@ -118,14 +120,14 @@ export default function ProfileScreen() {
     }
   };
 
-  const pushDescription =
+  const pushSubtitle =
     pushState === "enabled"
-      ? "Đang nhận tin nhắn mới và thông báo nghiệp vụ khi ứng dụng chạy nền hoặc đã đóng."
+      ? "Đang nhận thông báo trên thiết bị"
       : pushState === "denied"
-        ? "Quyền thông báo đang bị chặn. Mở cài đặt thiết bị để cấp lại quyền."
+        ? "Quyền thông báo đang bị chặn"
         : pushState === "unavailable"
-          ? "Push native cần bản development hoặc bản cài Android/iOS, không hoạt động trong Expo Go và trình duyệt."
-          : "Bật để nhận tin nhắn mới và thông báo nghiệp vụ ngay cả khi không mở ứng dụng.";
+          ? "Cần bản cài Android/iOS"
+          : "Nhận thông báo trên thiết bị";
 
   const changePassword = async () => {
     setPasswordValidationAttempted(true);
@@ -222,69 +224,59 @@ export default function ProfileScreen() {
             />
           </View>
         </Card>
-        <Card tone="soft">
-          <Text className="text-card font-bold text-content">
-            Bảo mật tài khoản
-          </Text>
-          <Text className="my-2 leading-5 text-content-muted">
-            Đổi mật khẩu định kỳ và không chia sẻ thông tin đăng nhập.
-          </Text>
-          <AppButton
-            tone="secondary"
-            label="Đổi mật khẩu"
+        <View className="overflow-hidden rounded-[16px] border border-border-subtle bg-surface">
+          <Pressable
+            accessibilityLabel="Đổi mật khẩu"
+            accessibilityRole="button"
             onPress={() => {
               setPasswordValidationAttempted(false);
               setChangePasswordOpen(true);
             }}
-          />
-        </Card>
-        <Card tone="soft">
-          <View className="flex-row items-center justify-between gap-2.5">
-            <Text className="text-card font-bold text-content">
-              Thông báo đẩy
-            </Text>
-            <StatusBadge
-              label={
-                pushState === "enabled"
-                  ? "Đang bật"
-                  : pushState === "denied"
-                    ? "Bị chặn"
-                    : "Đang tắt"
-              }
-              tone={
-                pushState === "enabled"
-                  ? "success"
-                  : pushState === "denied"
-                    ? "danger"
-                    : "neutral"
-              }
+            className="min-h-[58px] flex-row items-center gap-3 px-4 py-3"
+            style={({ pressed }) => ({ backgroundColor: pressed ? colors.surfaceMuted : colors.surface })}
+          >
+            <AppIcon name="change-password" size={18} color={colors.textMuted} />
+            <Text className="flex-1 text-body font-medium text-content">Đổi mật khẩu</Text>
+            <AppIcon name="chevron-right" size={18} color={colors.textPlaceholder} />
+          </Pressable>
+
+          <View className="mx-4 border-t border-border" />
+
+          <View className="min-h-[68px] flex-row items-center gap-3 px-4 py-3">
+            <AppIcon name="notifications" size={18} color={colors.textMuted} />
+            <View className="min-w-0 flex-1">
+              <Text className="text-body font-medium text-content">Thông báo đẩy</Text>
+              <Text numberOfLines={1} className="mt-0.5 text-[11px] text-content-muted">
+                {pushSubtitle}
+              </Text>
+            </View>
+            <Switch
+              accessibilityLabel="Thông báo đẩy"
+              disabled={pushLoading || pushState === "unavailable"}
+              ios_backgroundColor="#DCE3EC"
+              thumbColor="#FFFFFF"
+              trackColor={{ false: "#DCE3EC", true: colors.primary }}
+              value={pushState === "enabled"}
+              onValueChange={() => void updatePushNotifications()}
             />
           </View>
-          <Text className="my-2 leading-5 text-content-muted">
-            {pushDescription}
-          </Text>
-          <AppButton
-            tone="secondary"
-            label={
-              pushState === "enabled"
-                ? "Tắt thông báo"
-                : pushState === "denied"
-                  ? "Mở cài đặt"
-                  : "Bật thông báo"
-            }
-            disabled={pushState === "unavailable"}
-            loading={pushLoading}
-            onPress={() => void updatePushNotifications()}
-          />
-        </Card>
-        <Text className="mt-2 text-center text-xs text-content-muted">
-          BHL One phiên bản {Constants.expoConfig?.version || "1.0.0"}
-        </Text>
-        <AppButton
-          tone="danger-outline"
-          label="Đăng xuất"
+        </View>
+
+        <Pressable
+          accessibilityLabel="Đăng xuất"
+          accessibilityRole="button"
           onPress={confirmLogout}
-        />
+          className="min-h-[58px] flex-row items-center gap-3 rounded-[16px] border border-border-subtle bg-surface px-4 py-3"
+          style={({ pressed }) => ({ opacity: pressed ? 0.68 : 1 })}
+        >
+          <AppIcon name="logout" size={18} color={colors.danger} />
+          <Text className="flex-1 text-body font-medium text-danger">Đăng xuất</Text>
+          <AppIcon name="chevron-right" size={18} color={colors.dangerBorder} />
+        </Pressable>
+
+        <Text className="mt-0.5 text-center text-xs text-content-muted">
+          BHL Work • Phiên bản {Constants.expoConfig?.version || "1.0.0"}
+        </Text>
       </Screen>
 
       <Modal

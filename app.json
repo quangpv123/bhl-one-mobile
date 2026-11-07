@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "BHL One",
+    "name": "BHL Work",
     "slug": "bhl-one",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -48,16 +48,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "BHL One cần truy cập ảnh để nhận dạng biển số và đính kèm chứng từ.",
-          "cameraPermission": "BHL One cần dùng camera để chụp ảnh biển số và chứng từ.",
+          "photosPermission": "BHL Work cần truy cập ảnh để nhận dạng biển số và đính kèm chứng từ.",
+          "cameraPermission": "BHL Work cần dùng camera để chụp ảnh biển số và chứng từ.",
           "microphonePermission": false
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "BHL One cần dùng camera để quét mã QR vật tư.",
-          "microphonePermission": "BHL One không sử dụng microphone khi quét QR.",
+          "cameraPermission": "BHL Work cần dùng camera để quét mã QR vật tư.",
+          "microphonePermission": "BHL Work không sử dụng microphone khi quét QR.",
           "recordAudioAndroid": false
         }
       ],
